@@ -1,2 +1,5 @@
 # flake8: noqa
-from .metrics import Metrics, Accuracy, Precision, Recall, F1
+from .models import get_model
+from .loss_functions import get_loss
+from .metrics import Metrics
+from .plotting import flatui_cmap

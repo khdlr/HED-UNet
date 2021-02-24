@@ -1,41 +1,18 @@
 # Model Specification
 model: HEDUNet
 model_args:
-  input_channels: 2
-  base_channels: 8
+  input_channels: 3
+  base_channels: 32
   stack_height: 5
-  side_channels: 0
-  merging: attention
+  classes: 21
+  batch_norm: true
 # Training Parameters
 feature_pyramid: true
-loss_function:
-  type: AutoBCE
-batch_size: 4
+loss_function: AutoCE
+batch_size: 8
+epochs: 100
 learning_rate: 0.001
-schedule:
-  - phase: Training
-    epochs: 15
-    steps:
-      - train_on: train
-      - validate_on: val
-      - log_images
 # Data Configuration
 data_threads: 4
-datasets:
-  train:
-    augment: true
-    shuffle: true
-    folders:
-      - "Example Folder 1"
-      - "Example Folder 2"
-      # ...
-  val:
-    augment: false
-    shuffle: false
-    folders:
-      - "Example Folder 3"
-      # ...
 # Visualization
-visualization_tilesj
-  - "Example Folder 3/16"
-  # ...
+visualization_tiles: [0, 7, 14, 38, 120, 74, 57, 39, 101]
