@@ -15,12 +15,14 @@ from datetime import datetime
 from pathlib import Path
 from docopt import docopt
 from tqdm import tqdm
+from data_loading import get_dataset
 
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torchvision import datasets
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
@@ -33,6 +35,7 @@ except ModuleNotFoundError as e:
     from torch.optim import Adam
 
 from deep_learning import get_loss, get_model, Metrics, flatui_cmap
+from deep_learning.utils.data import Augment
 
 
 def showexample(idx, img, target, prediction):
@@ -40,23 +43,19 @@ def showexample(idx, img, target, prediction):
     gridspec_kw = dict(left=m, right=1 - m, top=1 - m, bottom=m,
                        hspace=m, wspace=m)
     fig, ax = plt.subplots(2, 3, figsize=(9, 6), gridspec_kw=gridspec_kw)
-    heatmap_seg  = dict(cmap='tab20', vmin=0.5, vmax=19.5)
+    heatmap_seg  = dict(cmap='gray', vmin=0, vmax=1)
     heatmap_edge = dict(cmap=flatui_cmap('Clouds', 'Midnight Blue'), vmin=0, vmax=1)
     # Clear all axes
     for axis in ax.flat:
         axis.imshow(np.ones([1, 1, 3]))
         axis.axis('off')
 
-    rgb = img.cpu().numpy()
-    mean = np.array([0.485, 0.456, 0.406]).reshape(-1, 1, 1)
-    std  = np.array([0.229, 0.224, 0.225]).reshape(-1, 1, 1)
-    rgb = rgb * std + mean
+    rgb = (1. + img.cpu().numpy()) / 2.
     ax[0, 0].imshow(np.clip(rgb.transpose(1, 2, 0), 0, 1))
-    ax[0, 1].imshow(target[1].cpu(), **heatmap_seg)
-    ax[1, 1].imshow(target[0].cpu(), **heatmap_edge)
+    ax[0, 1].imshow(target[0].cpu(), **heatmap_seg)
+    ax[1, 1].imshow(target[1].cpu(), **heatmap_edge)
 
-    seg_pred = torch.argmax(prediction[1:], dim=0)
-    edge_pred = torch.sigmoid(prediction[0])
+    seg_pred, edge_pred = torch.sigmoid(prediction)
     ax[0, 2].imshow(seg_pred.cpu(), **heatmap_seg)
     ax[1, 2].imshow(edge_pred.cpu(), **heatmap_edge)
 
@@ -68,19 +67,23 @@ def showexample(idx, img, target, prediction):
 
 def get_pyramid(mask):
     with torch.no_grad():
-        is_edge = (mask == 255).long()
-        mask[mask > 200] = -1
-        label = torch.stack([is_edge, mask], dim=1)
-        pyramid = [label]
-        # Build mip-maps
+        masks = [mask]
+        ## Build mip-maps
         for _ in range(stack_height):
             # Pretend we have a batch
-            big_label   = pyramid[-1]
-            is_edge     = (reduce(big_label[:,0], 'b (h h2) (w w2) -> b h w', 'min', h2=2, w2=2) == 0)
-            small_label = big_label[:, 1, ::2, ::2]
-            pyramid.append(torch.stack([is_edge, small_label], dim=1))
+            big_mask = masks[-1]
+            small_mask = F.avg_pool2d(big_mask, 2)
+            masks.append(small_mask)
 
-    return pyramid
+        targets = []
+        for mask in masks:
+            sobel = torch.any(SOBEL(mask) != 0, dim=1, keepdims=True).float()
+            if config['model'] == 'HED':
+                targets.append(sobel)
+            else:
+                targets.append(torch.cat([mask, sobel], dim=1))
+
+    return targets
 
 
 def full_forward(model, img, target, metrics):
@@ -129,12 +132,16 @@ def train(dataset):
 
     epoch += 1
     model.train(True)
-    for img, target in tqdm(data_loader):
+    prog = tqdm(data_loader)
+    for i, (img, target) in enumerate(prog): 
         for param in model.parameters():
             param.grad = None
         res = full_forward(model, img, target, metrics)
         res['loss'].backward()
         opt.step()
+
+        if (i+1) % 1000 == 0:
+            prog.set_postfix(metrics.peek())
 
     metrics_vals = metrics.evaluate()
     logstr = f'Epoch {epoch:02d} - Train: ' \
@@ -157,7 +164,7 @@ def val(dataset):
 
     model.train(False)
     idx = 0
-    for img, target in data_loader:
+    for img, target in tqdm(data_loader):
         B = img.shape[0]
         res = full_forward(model, img, target, metrics)
 
@@ -172,39 +179,6 @@ def val(dataset):
     print(logstr)
     with (log_dir / 'metrics.txt').open('a+') as f:
         print(logstr, file=f)
-
-
-class DataTransform:
-    def __init__(self, augment=False):
-        self.augment = augment
-        self.jitter = T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)
-
-    def __call__(self, img, target):
-        img = TF.resize(img, 256)
-        target = TF.resize(target, 256, interpolation=Image.NEAREST)
-
-        if self.augment:
-            i = random.randrange(5)
-            img = TF.five_crop(img, 224)[i]
-            target = TF.five_crop(target, 224)[i]
-
-            if random.random() < .5:
-                img = TF.hflip(img)
-                target = TF.hflip(target)
-
-        else:
-            img = TF.center_crop(img, 224)
-            target = TF.center_crop(target, 224)
-
-        img = TF.to_tensor(img)
-        target = torch.from_numpy(np.array(target)).long()
-
-        if self.augment:
-            img = self.jitter(img)
-
-        img = TF.normalize(img, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-
-        return img, target
 
 
 if __name__ == "__main__":
@@ -240,6 +214,18 @@ if __name__ == "__main__":
     epoch = 0
     metrics = Metrics()
 
+    SOBEL = nn.Conv2d(1, 2, 1, padding=1, padding_mode='replicate', bias=False)
+    SOBEL.weight.requires_grad = False
+    SOBEL.weight.set_(torch.Tensor([[
+        [-1,  0,  1],
+        [-2,  0,  2],
+        [-1,  0,  1]],
+       [[-1, -2, -1],
+        [ 0,  0,  0],
+        [ 1,  2,  1]
+    ]]).reshape(2, 1, 3, 3))
+    SOBEL = SOBEL.to(dev)
+
     lr = config['learning_rate']
     opt = Adam(model.parameters(), lr)
 
@@ -259,13 +245,17 @@ if __name__ == "__main__":
     checkpoints = log_dir / 'checkpoints'
     checkpoints.mkdir()
 
-    trn_dataset = datasets.VOCSegmentation('data/', image_set='train',
-            download=True, transforms=DataTransform(augment=True))
-    trn_dataset = torch.utils.data.ConcatDataset([trn_dataset] * 10)
-    val_dataset = datasets.VOCSegmentation('data/', image_set='val',
-            download=True, transforms=DataTransform(augment=False))
+    trnval = get_dataset('train')
+    indices = list(range(len(trnval)))
+    val_filter = lambda x: x % 10 == 0
 
-    loss_function = get_loss(config['loss_function'])
+    val_indices = list(filter(val_filter, indices))
+    trn_indices = list(filter(lambda x: not val_filter(x), indices))
+
+    trn_dataset = Augment(Subset(trnval, trn_indices))
+    val_dataset = Subset(trnval, val_indices)
+
+    loss_function = get_loss(config['loss_args'])
     if type(loss_function) is torch.nn.Module:
         loss_function = loss_function.to(dev)
 

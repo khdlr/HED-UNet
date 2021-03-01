@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, reduce, repeat 
 from .layers import Convx2, DownBlock, UpBlock, WithSE, PreactConvx2
 
 
@@ -9,11 +8,10 @@ class HEDUNet(nn.Module):
     """
     A straight-forward UNet implementation
     """
-    tasks = ['seg', 'edge']
 
-    def __init__(self, input_channels, classes=20, base_channels=16,
+    def __init__(self, input_channels, output_channels=2, base_channels=16,
                  conv_block=Convx2, padding_mode='replicate', batch_norm=False,
-                 squeeze_excitation=False, stack_height=5,
+                 squeeze_excitation=False, merging='attention', stack_height=5,
                  deep_supervision=True):
         super().__init__()
         bc = base_channels
@@ -21,7 +19,7 @@ class HEDUNet(nn.Module):
             conv_block = WithSE(conv_block)
         self.init = nn.Conv2d(input_channels, bc, 1)
 
-        self.classes = classes
+        self.output_channels = output_channels
 
         conv_args = dict(
             conv_block=conv_block,
@@ -40,15 +38,22 @@ class HEDUNet(nn.Module):
         ])
 
         self.predictors = nn.ModuleList([
-            nn.Conv2d((1<<i)*bc, 1+classes, 1)
+            nn.Conv2d((1<<i)*bc, output_channels, 1)
             for i in reversed(range(stack_height + 1))
         ])
 
         self.deep_supervision = deep_supervision
-        self.queries = nn.ModuleList([
-            nn.Conv2d((1<<i)*bc, 2, 1)
-            for i in reversed(range(stack_height + 1))
-        ])
+        self.merging = merging
+        if merging == 'attention':
+            self.queries = nn.ModuleList([
+                nn.Conv2d((1<<i)*bc, output_channels, 1)
+                for i in reversed(range(stack_height + 1))
+            ])
+        elif merging == 'learned':
+            self.merge_predictions = nn.Conv2d(output_channels*(stack_height+1), output_channels, 1)
+        else:
+            # no merging
+            pass
 
 
     def forward(self, x):
@@ -70,24 +75,22 @@ class HEDUNet(nn.Module):
         for feature_map, predictor in zip(multilevel_features, self.predictors):
             prediction = predictor(feature_map)
             predictions_list.append(prediction)
-            full_scale_preds.append(F.interpolate(prediction, size=(H, W), mode='bilinear', align_corners=False))
+            full_scale_preds.append(F.interpolate(prediction, size=(H, W), mode='bilinear', align_corners=True))
 
-        predictions = torch.stack(full_scale_preds, dim=2)
-        # B x 1+C x K x H x W
+        predictions = torch.cat(full_scale_preds, dim=1)
 
-        queries = [F.interpolate(q(feat), size=(H, W), mode='bilinear', align_corners=False)
-                for q, feat in zip(self.queries, multilevel_features)]
-        queries = torch.stack(queries, dim=2)
-        # queries: B x 2 x K x H x W
-        B, _, K, H, W = queries.shape
-        attns = F.softmax(queries, dim=2)
-        edge_attn = attns[:, 0]
-        seg_attn  = attns[:, 1]
-        full_attn = torch.cat(
-            [attns[:, [0]], attns[:, [1]].expand(B, self.classes, K, H, W)],
-            dim=1
-        )
-        combined_prediction = torch.einsum('bckhw,bckhw->bchw', full_attn, predictions)
+        if self.merging == 'attention':
+            queries = [F.interpolate(q(feat), size=(H, W), mode='bilinear', align_corners=True)
+                    for q, feat in zip(self.queries, multilevel_features)]
+            queries = torch.cat(queries, dim=1)
+            queries = queries.reshape(B, -1, self.output_channels, H, W)
+            attn = F.softmax(queries, dim=1)
+            predictions = predictions.reshape(B, -1, self.output_channels, H, W)
+            combined_prediction = torch.sum(attn * predictions, dim=1)
+        elif self.merging == 'learned':
+            combined_prediction = self.merge_predictions(predictions)
+        else:
+            combined_prediction = predictions_list[-1]
 
         if self.deep_supervision:
             return combined_prediction, list(reversed(predictions_list))

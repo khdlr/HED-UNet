@@ -22,9 +22,15 @@ class Metrics():
 
 
     @torch.no_grad()
-    def evaluate(self):
+    def peek(self):
         values = {}
         for key in self.running_agg:
             values[key] = float(self.running_agg[key] / self.running_count[key])
+        return values
+
+
+    @torch.no_grad()
+    def evaluate(self):
+        values = self.peek()
         self.reset()
         return values

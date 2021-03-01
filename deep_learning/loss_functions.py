@@ -1,34 +1,55 @@
 import re
-import torch
-import torch.nn as nn
+import torch.nn
 import torch.nn.functional as F
 
-
-def get_loss(loss_type):
-    if loss_type == 'AutoCE':
-        return auto_weight_ce
+def get_loss(loss_args):
+    loss_type = loss_args['type']
+    functional_style = re.search(r'(\w+)\((\w+)\)', loss_type)
+    args = dict()
+    if functional_style:
+        func, arg = functional_style.groups()
+        new_args = dict(loss_args)
+        if func == 'Summed':
+            new_args['type'] = arg
+            return sum_loss(get_loss(new_args))
+    if loss_type == 'BCE':
+        loss_class = torch.nn.BCEWithLogitsLoss
+        if 'pos_weight' in loss_args:
+            args['pos_weight'] = loss_args['pos_weight'] * torch.ones([])
+    elif loss_type == 'FocalLoss':
+        return focal_loss_with_logits
+    elif loss_type == 'AutoBCE':
+        return auto_weight_bce
     else:
         raise ValueError(f"No Loss of type {loss_type} known")
 
-    return loss_class()
+    return loss_class(**args)
 
 
-# @torch.jit.script
-def auto_weight_ce(y_hat_logit, y):
-    # Edge loss
-    y_edge = y[:, 0].float()
-    y_hat_edge = y_hat_logit[:, 0]
+def focal_loss_with_logits(y_hat_log, y, gamma=2):
+    log0 = F.logsigmoid(-y_hat_log)
+    log1 = F.logsigmoid(y_hat_log)
+
+    gamma0 = torch.pow(torch.abs(1 - y - torch.exp(log0)), gamma)
+    gamma1 = torch.pow(torch.abs(y - torch.exp(log1)), gamma)
+
+    return torch.mean(-(1 - y) * gamma0 * log0 - y * gamma1 * log1)
+
+
+def auto_weight_bce(y_hat_log, y):
     with torch.no_grad():
-        beta = y_edge.mean(dim=[1, 2], keepdims=True)
-    logit_1 = F.logsigmoid(y_hat_edge)
-    logit_0 = F.logsigmoid(-y_hat_edge)
-    edge_loss = -(1 - beta) * logit_1 * y_edge \
-                - beta * logit_0 * (1 - y_edge)
-    edge_loss = torch.mean(edge_loss)
+        beta = y.mean(dim=[2, 3], keepdims=True)
+    logit_1 = F.logsigmoid(y_hat_log)
+    logit_0 = F.logsigmoid(-y_hat_log)
+    loss = -(1 - beta) * logit_1 * y \
+           - beta * logit_0 * (1 - y)
+    return loss.mean()
 
-    y_seg = y[:, 1]
-    y_hat_seg = y_hat_logit[:, 1:]
-
-    seg_loss = nn.CrossEntropyLoss(ignore_index=-1)(y_hat_seg, y_seg)
-
-    return edge_loss + seg_loss
+def sum_loss(loss_fn):
+    def loss(prediction, target):
+        if type(prediction) is list:
+            losses = torch.stack([loss_fn(p, t) for p, t in zip(prediction, target)])
+            return torch.sum(losses)
+        else:
+            return loss_fn(prediction, target)
+    return loss

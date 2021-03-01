@@ -2,13 +2,13 @@
 model: HEDUNet
 model_args:
   input_channels: 3
-  base_channels: 32
+  base_channels: 16
   stack_height: 5
-  classes: 21
   batch_norm: true
 # Training Parameters
 feature_pyramid: true
-loss_function: AutoCE
+loss_args:
+  type: AutoBCE
 batch_size: 8
 epochs: 100
 learning_rate: 0.001
