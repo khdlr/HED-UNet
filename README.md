@@ -27,3 +27,17 @@ As the original dataset isn't publicly available, this repository contains an ad
 ## Usage
 
 In order to use this for your project, you will need adapt either the `get_dataloader` function in `train.py` or the methods in `data_loading.py`.
+
+## Citation
+
+If you find our code helpful and use it in your research, please use the following BibTeX entry.
+
+```tex
+@unpublished{HEDUNet2021,
+  author =   {Heidler, Konrad and Mou, Lichao and Baumhoer, Celia and Dietz, Andreas and Zhu, Xiao Xiang},
+  title =    {HED-UNet: Combined Segmentation and Edge Detection for Monitoring the Antarctic Coastline},
+  journal =  {IEEE Transactions on Geoscience and Remote Sensing},
+  year =     {2021},
+  note =     {in press}
+}
+```
