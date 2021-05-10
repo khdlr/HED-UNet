@@ -4,7 +4,7 @@ Code for HED-UNet, a model for simultaneous semantic segmentation and edge detec
 
 ## Glacier Fronts
 
-This model was originally developed to detect calving front margins in Antarctica from Senitinel-1 SAR imagery.
+This model was originally developed to detect calving front margins in Antarctica from Sentinel-1 SAR imagery.
 
 ![glaciers](figures/glaciers.jpg)
 
