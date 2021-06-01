@@ -33,11 +33,14 @@ In order to use this for your project, you will need adapt either the `get_datal
 If you find our code helpful and use it in your research, please use the following BibTeX entry.
 
 ```tex
-@unpublished{HEDUNet2021,
-  author =   {Heidler, Konrad and Mou, Lichao and Baumhoer, Celia and Dietz, Andreas and Zhu, Xiao Xiang},
-  title =    {HED-UNet: Combined Segmentation and Edge Detection for Monitoring the Antarctic Coastline},
-  journal =  {IEEE Transactions on Geoscience and Remote Sensing},
-  year =     {2021},
-  note =     {in press}
+@article{HEDUNet2021,
+  author={Heidler, Konrad and Mou, Lichao and Baumhoer, Celia and Dietz, Andreas and Zhu, Xiao Xiang},
+  journal={IEEE Transactions on Geoscience and Remote Sensing}, 
+  title={HED-UNet: Combined Segmentation and Edge Detection for Monitoring the Antarctic Coastline}, 
+  year={2021},
+  volume={},
+  number={},
+  pages={1-14},
+  doi={10.1109/TGRS.2021.3064606}
 }
 ```
