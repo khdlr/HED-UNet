@@ -18,22 +18,3 @@ def get_dataset(dataset, names=['images', 'gt'], augment=False):
     if augment:
         dataset = Augment(dataset)
     return dataset
-
-
-def get_batch(data_names):
-    base_dir = Path('data/scenes')
-    data = []
-    for sample in data_names:
-        scene, tile = sample.split('/')
-        tensor_file = base_dir / scene / 'scene' / f'{tile}.pt'
-        tensor = torch.load(tensor_file)
-        mask_file = base_dir / scene / 'mask' / f'{tile}.pt'
-        mask = torch.load(mask_file)
-
-        data.append(transform_fn((tensor, mask)))
-
-    out = []
-    for tensors in zip(*data):
-        out.append(torch.stack(tensors, dim=0))
-
-    return out
