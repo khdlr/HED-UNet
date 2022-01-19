@@ -6,7 +6,7 @@ from .layers import Convx2, DownBlock, UpBlock, WithSE, PreactConvx2
 
 class HEDUNet(nn.Module):
     """
-    A straight-forward UNet implementation
+    A straight-forward HED-UNet implementation
     """
 
     def __init__(self, input_channels, output_channels=2, base_channels=16,
