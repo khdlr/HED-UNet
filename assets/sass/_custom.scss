@@ -1,0 +1,33 @@
+
+// Syntax-highlighting:
+@import "solarized"
+
+img .home-logo {
+  height: 0px;
+  display: none;
+}
+
+div.visual_row img {
+  max-width: 48%;
+  max-height: 30vh;
+  margin-bottom: 0.3em;
+}
+
+div.images img {
+  width: 80%;
+  margin-bottom: 0.3em;
+}
+
+p a {
+  color: #0097A7;
+}
+
+.center-xs p {
+  text-align: left;
+}
+
+.container {
+  max-width: 50rem; // 700px
+  margin: auto;
+  padding: $vertical-rhythm * 2 0 0;
+}

@@ -1,2 +1,10 @@
-.hugo_build.lock
-resources/_gen
+
+/public/
+/exampleSite/public/
+/exampleSite/resources/_gen/*
+
+workspace
+
+/resources/*
+
+.env
