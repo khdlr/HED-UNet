@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, ConcatDataset, Subset
-from deep_learning.utils.data import InriaDataset, Augment
+from lib.utils.data import InriaDataset, Augment
 from pathlib import Path
 
 def transform_fn(sample, eps=1e-7):

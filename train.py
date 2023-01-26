@@ -34,8 +34,8 @@ try:
 except ModuleNotFoundError as e:
     from torch.optim import Adam
 
-from deep_learning import get_loss, get_model, Metrics, flatui_cmap
-from deep_learning.utils.data import Augment
+from lib import get_loss, get_model, Metrics, flatui_cmap
+from lib.utils.data import Augment
 
 
 def showexample(idx, img, target, prediction):
