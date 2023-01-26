@@ -1,18 +1,30 @@
 # Model Specification
-model: HEDUNet
+model: MultitaskHEDUNet
 model_args:
-  input_channels: 3
+  input_spec:
+    SAR: 1
+    Sentinel2: 11
+    Landsat: 7
+  output_spec:
+    Fronts:
+      classes: 1
+      loss: AutoBCE
+    Mask:
+      classes: 1
+      loss: AutoBCE
+    Zones:
+      classes: 4
+      loss: CrossEntropy
   base_channels: 16
   stack_height: 5
   batch_norm: true
 # Training Parameters
+tile_size: 512
+data_root: '/home/konrad/phd_data/FromTian'
 feature_pyramid: true
-loss_args:
-  type: AutoBCE
 batch_size: 8
 epochs: 100
-learning_rate: 0.001
+learning_rate: 1.e-3
 # Data Configuration
 data_threads: 4
 # Visualization
-visualization_tiles: [0, 7, 14, 38, 120, 74, 57, 39, 101]

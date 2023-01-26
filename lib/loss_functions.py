@@ -20,6 +20,8 @@ def get_loss(loss_args):
         return focal_loss_with_logits
     elif loss_type == 'AutoBCE':
         return auto_weight_bce
+    elif loss_type == 'CrossEntropy':
+      return F.cross_entropy
     else:
         raise ValueError(f"No Loss of type {loss_type} known")
 
