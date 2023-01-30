@@ -7,6 +7,7 @@ import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 from abc import abstractmethod
+from torch.utils._pytree import tree_map
 
 from .utils import md5
 
@@ -22,6 +23,7 @@ class GlacierFrontDataset(torch.utils.data.Dataset):
     if not self.cache_path().exists():
       self.build_cache()
     self.data = xarray.open_dataset(self.cache_path(), cache=False)
+    self.variables = [var for var in self.data.variables if not var.endswith('_present')]
 
   def __post_init__(self):
     ...
@@ -35,9 +37,25 @@ class GlacierFrontDataset(torch.utils.data.Dataset):
       path.parent.mkdir(exist_ok=True, parents=True)
     if not path.exists():
       tiles = defaultdict(list)
+      present = defaultdict(list)
+
+      count = 0
       for data_tiles in self.generate_tiles():
-        for kind in data_tiles:
-          tiles[kind].append(data_tiles[kind])
+        for kind, data in data_tiles.items():
+          while len(tiles[kind]) < count:
+            tiles[kind].append(np.zeros_like(data))
+          tiles[kind].append(data)
+
+          while len(present[kind]) < count:
+            present[kind].append(False)
+          present[kind].append(True)
+        count += 1
+
+      for kind in tiles:
+        while len(tiles[kind]) < count:
+          tiles[kind].append(np.zeros_like(tiles[kind][0]))
+        while len(present[kind]) < count:
+          present[kind].append(False)
 
       arrays = {}
       for kind in tiles:
@@ -51,13 +69,15 @@ class GlacierFrontDataset(torch.utils.data.Dataset):
           raise ValueError()
         print(kind, stacked.shape)
         arrays[kind] = xarray.DataArray(stacked, dims=dims)
+        arrays[f'{kind}_present'] = xarray.DataArray(np.asarray(present[kind]), dims=['sample'])
 
       data = xarray.Dataset(arrays)
       data.to_netcdf(self.cache_path(), engine='h5netcdf')
 
   def generate_tiles(self) -> Iterator[dict[str, np.ndarray]]:
     size = self.tilesize
-    for data in tqdm(self.generate_images()):
+    for data in self.generate_images():
+      print('Got:', tree_map(lambda x: x.shape, data))
       *_, H, W = list(data.values())[0].shape
 
       ysteps = 1 + H // size
@@ -78,21 +98,10 @@ class GlacierFrontDataset(torch.utils.data.Dataset):
 
   def __getitem__(self, idx):
     out = {}
-    for key in self.data.variables:
-      out[key] = self.data[key][idx]
+    for key in self.variables:
+      if self.data[f'{key}_present'][idx]:
+        out[key] = self.data[key][idx]
+    return out
 
   def __len__(self):
-    raise NotImplementedError()
-
-
-if __name__ == "__main__":
-    config = {
-        "dataset": "TUD-MS",
-        "data_root": "../aicore/uc1_new/",
-        "vertices": 64,
-        "tile_size": 256,
-    }
-    ds = GlacierFrontDataset("test_esa", config, subtiles=False)
-    print(len(ds))
-    for x in ds[0]:
-        print(x.shape, x.dtype)
+    return len(self.data.sample)

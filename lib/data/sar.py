@@ -33,6 +33,6 @@ if __name__ == "__main__":
       'tilesize': 512
     }
     ds = SARDataset(config, mode='train')
-    print(len(ds))
-    for x in ds[0]:
-        print(x.shape, x.dtype)
+    print('Tiles:', len(ds))
+    for key, val in ds[0].items():
+        print(key, val.shape, val.dtype)

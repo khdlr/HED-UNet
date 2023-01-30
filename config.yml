@@ -12,6 +12,9 @@ model_args:
     Mask:
       classes: 1
       loss: AutoBCE
+    Termpicks:
+      classes: 1
+      loss: AutoBCE
     Zones:
       classes: 4
       loss: CrossEntropy
@@ -20,7 +23,7 @@ model_args:
   batch_norm: true
 # Training Parameters
 tile_size: 512
-data_root: '/home/konrad/phd_data/FromTian'
+data_root: '/home/user/_data/FromTian'
 feature_pyramid: true
 batch_size: 8
 epochs: 100
