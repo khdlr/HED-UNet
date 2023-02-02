@@ -19,8 +19,8 @@ class PreactConvx2(nn.Module):
         self.conv1 = nn.Conv2d(c_in, c_out, 3, **conv_args)
         self.conv2 = nn.Conv2d(c_out, c_out, 3, **conv_args)
         if bn:
-            self.bn1 = nn.BatchNorm2d(c_in)
-            self.bn2 = nn.BatchNorm2d(c_out)
+            self.bn1 = nn.GroupNorm(1, c_in)
+            self.bn2 = nn.GroupNorm(1, c_out)
         else:
             self.bn1 = Identity()
             self.bn2 = Identity()
@@ -38,8 +38,8 @@ class Convx2(nn.Module):
         self.conv1 = nn.Conv2d(c_in, c_out, 3, **conv_args)
         self.conv2 = nn.Conv2d(c_out, c_out, 3, **conv_args)
         if bn:
-            self.bn1 = nn.BatchNorm2d(c_out)
-            self.bn2 = nn.BatchNorm2d(c_out)
+            self.bn1 = nn.GroupNorm(1, c_out)
+            self.bn2 = nn.GroupNorm(1, c_out)
         else:
             self.bn1 = Identity()
             self.bn2 = Identity()
@@ -79,10 +79,10 @@ class DenseBlock(nn.Module):
 
         if bn:
             self.bns = nn.ModuleList([
-                nn.BatchNorm2d(dense_size)
+                nn.GroupNorm(1, dense_size)
                 for i in range(4)
             ])
-            self.bn_final = nn.BatchNorm2d(c_out)
+            self.bn_final = nn.GroupNorm(1, c_out)
         else:
             self.bns = nn.ModuleList([Identity() for i in range(4)])
             self.bn_final = Identity()
@@ -135,7 +135,7 @@ class DownBlock(nn.Module):
         bias = not bn
         self.convdown = nn.Conv2d(c_in, c_in, 2, stride=2, bias=bias)
         if bn:
-            self.bn = nn.BatchNorm2d(c_in)
+            self.bn = nn.GroupNorm(1, c_in)
         else:
             self.bn = Identity()
         self.relu = nn.ReLU(inplace=True)
@@ -158,7 +158,7 @@ class UpBlock(nn.Module):
         bias = not bn
         self.up = nn.ConvTranspose2d(c_in, c_in // 2, 2, stride=2, bias=bias)
         if bn:
-            self.bn = nn.BatchNorm2d(c_in // 2)
+            self.bn = nn.GroupNorm(1, c_in // 2)
         else:
             self.bn = Identity()
         self.relu = nn.ReLU(inplace=True)
