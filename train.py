@@ -84,9 +84,6 @@ def train(loader):
         res['loss'].backward()
         opt.step()
 
-        if (i+1) % 100 == 0:
-            prog.set_postfix(metrics.peek())
-
     metrics_vals = metrics.evaluate()
     wandb.log({f'trn/{k}': v for k, v in metrics_vals.items()}, step=epoch)
 
