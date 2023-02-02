@@ -1,9 +1,27 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils._pytree import tree_map
 from functools import partial
 from .layers import Convx2, DownBlock, UpBlock, WithSE, PreactConvx2
+from einops import rearrange
 
+
+class NoBatchConv(nn.Conv2d):
+  def forward(self, inputs):
+    x = inputs.unsqueeze(0)
+    x = super().forward(x)
+    return x.squeeze(0)
+
+
+class Interpolator:
+  def __init__(self, output_size):
+    self.output_size = output_size
+
+  def __call__(self, inputs):
+    x = inputs.unsqueeze(0)
+    x = F.interpolate(x, size=self.output_size, mode='bilinear', align_corners=True)
+    return x.squeeze(0)
 
 class MultitaskHEDUNet(nn.Module):
     """
@@ -21,17 +39,17 @@ class MultitaskHEDUNet(nn.Module):
 
         self.init = nn.ModuleDict()
         for kind, channels in input_spec.items():
-          self.init[kind] = nn.Conv2d(channels, bc, 1)
+          self.init[kind] = NoBatchConv(channels, bc, 1)
 
         self.predictors = nn.ModuleDict()
         self.queries = nn.ModuleDict()
-        for kind, channels in output_spec.items():
+        for kind, spec in output_spec.items():
           self.predictors[kind] = nn.ModuleList([
-            nn.Conv2d((1<<i)*bc, channels, 1)
+            NoBatchConv((1<<i)*bc, spec['classes'], 1)
             for i in reversed(range(stack_height + 1))
           ])
           self.queries[kind] = nn.ModuleList([
-            nn.Conv2d((1<<i)*bc, 1, 1, bias=False)
+            NoBatchConv((1<<i)*bc, 1, 1, bias=False)
             for i in reversed(range(stack_height + 1))
           ])
 
@@ -53,16 +71,15 @@ class MultitaskHEDUNet(nn.Module):
 
         self.deep_supervision = deep_supervision
 
-
-    def forward(self, inputs, input_types, output_types):
+    def forward(self, inputs, output_kinds):
         xs = []
-        for x, kind in zip(inputs, input_types):
-          x = x.unsqueeze(0)
+        for element in inputs:
+          assert len(element) == 1
+          kind, = element.keys()
+          x, = element.values()
           xs.append(self.init[kind](x))
-        x = torch.cat(xs, dim=0)
-
+        x = torch.stack(xs, dim=0)
         B, _, H, W = x.shape
-        x = self.init(x)
 
         skip_connections = []
         for block in self.down_blocks:
@@ -74,12 +91,12 @@ class MultitaskHEDUNet(nn.Module):
             x = block(x, skip)
             multilevel_features.append(x)
 
-        scale = partial(F.interpolate, size=(H, W), mode='bilinear', align_corners=True)
+        scale = Interpolator(output_size=(H, W))
         # outputs[batch_idx][kind] = ...
         # deep_outputs[batch_idx][kind][level] = ...
         outputs = []
         deep_outputs = []
-        for kinds, *features in enumerate(output_types, *multilevel_features):
+        for kinds, *features in zip(output_kinds, *multilevel_features):
           output = {}
           deep_output = {}
           for kind in kinds:
@@ -92,9 +109,9 @@ class MultitaskHEDUNet(nn.Module):
               deep_outs.append(prediction)
               predictions.append(scale(prediction))
               queries.append(scale(q))
-            predictions = torch.cat(predictions, dim=1)
-            attn = F.softmax(torch.cat(queries, dim=1), dim=1)
-            final_output = torch.einsum('brchw,brhw->bchw', predictions, attn)
+            predictions = torch.stack(predictions, dim=0) # Level x Channel x H x W
+            attn = F.softmax(torch.cat(queries, dim=0), dim=0) # Level x H x W
+            final_output = torch.einsum('rchw,rhw->chw', predictions, attn)
 
             output[kind] = final_output
             deep_output[kind] = deep_outs

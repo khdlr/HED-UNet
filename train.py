@@ -11,23 +11,21 @@ Options:
     --config=CONFIG    Specify run config to use [default: config.yml]
 """
 import sys, shutil, random, yaml
+from warnings import warn
 from datetime import datetime
 from pathlib import Path
-from docopt import docopt
 from tqdm import tqdm
-from lib.data import get_dataset
+from lib.data import get_loader
+from lib.utils import mean, sample_map
 
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Subset
-from torchvision import datasets
-import torchvision.transforms as T
-import torchvision.transforms.functional as TF
-from PIL import Image
-from einops import reduce
+from torch.utils._pytree import tree_map
+from torch.utils.data import DataLoader
+import wandb
 
 try:
     from apex.optimizers import FusedAdam as Adam
@@ -35,204 +33,96 @@ except ModuleNotFoundError as e:
     from torch.optim import Adam
 
 from lib import get_loss, get_model, Metrics, flatui_cmap
-from lib.utils.data import Augment
 
 
-def showexample(idx, img, target, prediction):
-    m = 0.02
-    gridspec_kw = dict(left=m, right=1 - m, top=1 - m, bottom=m,
-                       hspace=m, wspace=m)
-    fig, ax = plt.subplots(2, 3, figsize=(9, 6), gridspec_kw=gridspec_kw)
-    heatmap_seg  = dict(cmap='gray', vmin=0, vmax=1)
-    heatmap_edge = dict(cmap=flatui_cmap('Clouds', 'Midnight Blue'), vmin=0, vmax=1)
-    # Clear all axes
-    for axis in ax.flat:
-        axis.imshow(np.ones([1, 1, 3]))
-        axis.axis('off')
-
-    rgb = (1. + img.cpu().numpy()) / 2.
-    ax[0, 0].imshow(np.clip(rgb.transpose(1, 2, 0), 0, 1))
-    ax[0, 1].imshow(target[0].cpu(), **heatmap_seg)
-    ax[1, 1].imshow(target[1].cpu(), **heatmap_edge)
-
-    seg_pred, edge_pred = torch.sigmoid(prediction)
-    ax[0, 2].imshow(seg_pred.cpu(), **heatmap_seg)
-    ax[1, 2].imshow(edge_pred.cpu(), **heatmap_edge)
-
-    filename = log_dir / 'figures' / f'{idx:03d}_{epoch}.jpg'
-    filename.parent.mkdir(exist_ok=True)
-    plt.savefig(filename, bbox_inches='tight')
-    plt.close()
+@sample_map
+def calculate_loss(prediction, target, kind):
+  return loss_functions[kind](prediction, target)
 
 
-def get_pyramid(mask):
-    with torch.no_grad():
-        masks = [mask]
-        ## Build mip-maps
-        for _ in range(stack_height):
-            # Pretend we have a batch
-            big_mask = masks[-1]
-            small_mask = F.avg_pool2d(big_mask, 2)
-            masks.append(small_mask)
+def full_forward(model, data, metrics):
+    data = tree_map(lambda x: x.to(dev), data)
 
-        targets = []
-        for mask in masks:
-            sobel = torch.any(SOBEL(mask) != 0, dim=1, keepdims=True).float()
-            if config['model'] == 'HED':
-                targets.append(sobel)
-            else:
-                targets.append(torch.cat([mask, sobel], dim=1))
+    inputs, targets, output_kinds = [], [], []
+    for sample in data:
+      inp = {}
+      outp = {}
+      outp_kinds = []
+      for k, v in sample.items():
+        if k in loss_functions:
+          outp[k] = v
+          outp_kinds.append(k)
+        elif k in model.init:
+          inp[k] = v
+        else:
+          raise ValueError(f'Not sure what to do with data of kind {k!r}')
+      inputs.append(inp)
+      targets.append(outp)
+      output_kinds.append(outp_kinds)
 
-    return targets
-
-
-def full_forward(model, img, target, metrics):
-    img = img.to(dev)
-    target = target.to(dev)
-    y_hat, y_hat_levels = model(img)
-    target = get_pyramid(target)
-    loss_levels = []
+    y_hat, y_hat_levels = model(inputs, output_kinds)
+    losses = calculate_loss(y_hat, targets)
+    warn('No Deep Supervision yet')
     
-    for y_hat_el, y in zip(y_hat_levels, target):
-        loss_levels.append(loss_function(y_hat_el, y))
-    # Overall Loss
-    loss_final = loss_function(y_hat, target[0])
-    # Pyramid Losses (Deep Supervision)
-    loss_deep_super = torch.sum(torch.stack(loss_levels))
-    loss = loss_final + loss_deep_super
+    loss = mean(mean(sample_losses.values()) for sample_losses in losses)
+    metrics.step(y_hat, targets, Loss=loss)
 
-    target = target[0]
-    seg_pred = torch.argmax(y_hat[:, 1:], dim=1)
-    seg_acc = (seg_pred == target[:, 1]).float().mean()
-
-    edge_pred = (y_hat[:, 0] > 0).float()
-    edge_acc = (edge_pred == target[:, 0]).float().mean()
-
-    metrics.step(Loss=loss, SegAcc=seg_acc, EdgeAcc=edge_acc)
-
-    return dict(
-        img=img,
-        target=target,
-        y_hat=y_hat,
-        loss=loss,
-        loss_final=loss_final,
-        loss_deep_super=loss_deep_super
-    )
+    return dict(data=data, loss=loss)
 
 
-def train(dataset):
+def train(loader):
     global epoch
     # Training step
 
-    data_loader = DataLoader(dataset,
-        batch_size=config['batch_size'],
-        shuffle=True, num_workers=config['data_threads'],
-        pin_memory=True
-    )
-
     epoch += 1
     model.train(True)
-    prog = tqdm(data_loader)
-    for i, (img, target) in enumerate(prog): 
+    prog = tqdm(loader)
+    for i, (data, metadata) in enumerate(prog): 
         for param in model.parameters():
             param.grad = None
-        res = full_forward(model, img, target, metrics)
+        res = full_forward(model, data, metrics)
         res['loss'].backward()
         opt.step()
 
-        if (i+1) % 1000 == 0:
+        if (i+1) % 100 == 0:
             prog.set_postfix(metrics.peek())
 
     metrics_vals = metrics.evaluate()
-    logstr = f'Epoch {epoch:02d} - Train: ' \
-           + ', '.join(f'{key}: {val:.3f}' for key, val in metrics_vals.items())
-    with (log_dir / 'metrics.txt').open('a+') as f:
-        print(logstr, file=f)
+    wandb.log({f'trn/{k}': v for k, v in metrics_vals.items()}, step=epoch)
 
     # Save model Checkpoint
     torch.save(model.state_dict(), checkpoints / f'{epoch:02d}.pt')
 
 
 @torch.no_grad()
-def val(dataset):
+def val(data_loader):
     # Validation step
-    data_loader = DataLoader(dataset,
-        batch_size=config['batch_size'],
-        shuffle=False, num_workers=config['data_threads'],
-        pin_memory=True
-    )
 
     model.train(False)
     idx = 0
-    for img, target in tqdm(data_loader):
-        B = img.shape[0]
-        res = full_forward(model, img, target, metrics)
-
-        for i in range(B):
-            if idx+i in config['visualization_tiles']:
-                showexample(idx+i, img[i], res['target'][i], res['y_hat'][i])
-        idx += B
+    for data, metadata in data_loader:
+        res = full_forward(model, data, metrics)
+        # TODO: Image logging
 
     metrics_vals = metrics.evaluate()
-    logstr = f'Epoch {epoch:02d} - Val: ' \
-           + ', '.join(f'{key}: {val:.3f}' for key, val in metrics_vals.items())
-    print(logstr)
-    with (log_dir / 'metrics.txt').open('a+') as f:
-        print(logstr, file=f)
+    wandb.log({f'val/{k}': v for k, v in metrics_vals.items()}, step=epoch)
 
 
 if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
-
-    cli_args = docopt(__doc__, version="Usecase 2 Training Script 1.0")
-    config_file = Path(cli_args['--config'])
-    config = yaml.load(config_file.open(), Loader=yaml.SafeLoader)
+    config = yaml.safe_load(open('config.yml'))
 
     modelclass = get_model(config['model'])
     model = modelclass(**config['model_args'])
-
-    if cli_args['--resume']:
-        config['resume'] = cli_args['--resume']
-
-    if 'resume' in config and config['resume']:
-        checkpoint = Path(config['resume'])
-        if not checkpoint.exists():
-            raise ValueError(f"There is no Checkpoint at {config['resume']} to resume from!")
-        if checkpoint.is_dir():
-            # Load last checkpoint in run dir
-            ckpt_nums = [int(ckpt.stem) for ckpt in checkpoint.glob('checkpoints/*.pt')]
-            last_ckpt = max(ckpt_nums)
-            config['resume'] = checkpoint / 'checkpoints' / f'{last_ckpt:02d}.pt'
-        print(f"Resuming training from checkpoint {config['resume']}")
-        model.load_state_dict(torch.load(config['resume']))
-
-    cuda = True if torch.cuda.is_available() else False
-    dev = torch.device("cpu") if not cuda else torch.device("cuda")
+    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'Training on {dev} device')
     model = model.to(dev)
 
     epoch = 0
     metrics = Metrics()
 
-    SOBEL = nn.Conv2d(1, 2, 1, padding=1, padding_mode='replicate', bias=False)
-    SOBEL.weight.requires_grad = False
-    SOBEL.weight.set_(torch.Tensor([[
-        [-1,  0,  1],
-        [-2,  0,  2],
-        [-1,  0,  1]],
-       [[-1, -2, -1],
-        [ 0,  0,  0],
-        [ 1,  2,  1]
-    ]]).reshape(2, 1, 3, 3))
-    SOBEL = SOBEL.to(dev)
-
     lr = config['learning_rate']
     opt = Adam(model.parameters(), lr)
-
-    if cli_args['--summary']:
-        from torchsummary import summary
-        summary(model, [(3, 256, 256)])
-        sys.exit(0)
 
     stack_height = 1 if 'stack_height' not in config['model_args'] else \
             config['model_args']['stack_height']
@@ -240,25 +130,22 @@ if __name__ == "__main__":
     log_dir = Path('logs') / datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     log_dir.mkdir(exist_ok=False, parents=True)
 
-    shutil.copy(config_file, log_dir / 'config.yml')
+    shutil.copy('config.yml', log_dir / 'config.yml')
 
     checkpoints = log_dir / 'checkpoints'
     checkpoints.mkdir()
 
-    trnval = get_dataset('train')
-    indices = list(range(len(trnval)))
-    val_filter = lambda x: x % 10 == 0
+    trn_loader = get_loader(config, 'train')
+    val_loader = get_loader(config, 'val')
 
-    val_indices = list(filter(val_filter, indices))
-    trn_indices = list(filter(lambda x: not val_filter(x), indices))
-
-    trn_dataset = Augment(Subset(trnval, trn_indices))
-    val_dataset = Subset(trnval, val_indices)
-
-    loss_function = get_loss(config['loss_args'])
-    if type(loss_function) is torch.nn.Module:
-        loss_function = loss_function.to(dev)
-
-    for _ in range(config['epochs']):
-        train(trn_dataset)
-        val(val_dataset)
+    loss_functions = {}
+    for kind, spec in config['model_args']['output_spec'].items():
+      loss_functions[kind] = get_loss(spec['loss'])
+      if type(loss_functions[kind]) is torch.nn.Module:
+          loss_function = loss_functions[kind].to(dev)
+ 
+    wandb.init(project=f'Multitask HED-UNet', config=config)
+    for epoch in range(config['epochs']):
+      wandb.log({'epoch': epoch}, step=epoch)
+      train(trn_loader)
+      val(val_loader)

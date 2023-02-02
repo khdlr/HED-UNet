@@ -3,8 +3,11 @@ model: MultitaskHEDUNet
 model_args:
   input_spec:
     SAR: 1
-    Sentinel2: 11
-    Landsat: 7
+    Sentinel2: 12
+    Landsat8: 11
+    Landsat7: 9
+    Landsat5: 7
+    Landsat4: 7
   output_spec:
     Fronts:
       classes: 1
@@ -13,6 +16,9 @@ model_args:
       classes: 1
       loss: AutoBCE
     Termpicks:
+      classes: 1
+      loss: AutoBCE
+    Kochtitzky:
       classes: 1
       loss: AutoBCE
     Zones:
@@ -25,7 +31,7 @@ model_args:
 tile_size: 512
 data_root: '/home/user/_data/FromTian'
 feature_pyramid: true
-batch_size: 8
+batch_size: 16
 epochs: 100
 learning_rate: 1.e-3
 # Data Configuration
