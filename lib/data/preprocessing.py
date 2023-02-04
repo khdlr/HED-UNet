@@ -59,10 +59,10 @@ def build_sar_scene(args):
     zone = np.clip(zone // 63, 0, 3)  # Convert [0,64,128,255] to classes 0,1,2,3
     out['Zones'] = xarray.DataArray(zone, dims=['y', 'x'])
 
-  fronts_path = Path(str(sar_path).replace('sar_images', 'fronts').replace('.png', '_fronts.png'))
+  fronts_path = Path(str(sar_path).replace('sar_images', 'fronts').replace('.png', '_front.png'))
   if fronts_path.exists():
-    fronts = np.asarray(Image.open(mask_path)) > 0
-    out['fronts'] = xarray.DataArray(fronts, dims=['y', 'x'])
+    fronts = np.asarray(Image.open(fronts_path)) > 0
+    out['Fronts'] = xarray.DataArray(fronts, dims=['y', 'x'])
 
   try:
     dataset = xarray.Dataset(out)
@@ -129,21 +129,20 @@ def build_ls_scene(args):
   tag = Path(first_img.parent).name
   platform = first_img.stem.split('_')[0]
   platform_id = platform[-1]
+  if platform_id in ['4', '5']:
+    platform_id = '45'
   out_path = f'{mode}/LS{platform_id}_{glacier_id}_{tag}.nc'
 
   if check_exists(cache_dir, out_path):
     return
 
-  if platform == 'LC08':
+  if platform_id == '8':
     band_names = ['B1', 'B2', 'B3', 'B4', 'B5', 'B5', 'B6', 'B7', 'B8', 'B10', 'B11']
     scale = 10000
-  elif platform == 'LE07':
+  elif platform_id == '7':
     band_names = ['B1', 'B2', 'B3', 'B4', 'B5', 'B5', 'B6_VCID_2', 'B7', 'B8']
     scale = 255
-  elif platform == 'LT05':
-    band_names = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7']
-    scale = 255
-  elif platform == 'LT04':
+  elif platform_id == '45':
     band_names = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7']
     scale = 255
   else:
