@@ -42,6 +42,7 @@ def flatui_cmap(*colors):
 def to_rgb(ary, kind):
   kind = kind.removeprefix('Pred')
   if kind in ['Kochtitzky', 'Termpicks', 'Fronts', 'Mask']:
+    ary = 1 / (1 + np.exp(-ary))
     if ary.shape[0] == 1:
       ary = ary[0]
     if ary.ndim == 2:
