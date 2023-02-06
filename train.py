@@ -18,6 +18,7 @@ from collections import defaultdict
 from tqdm import tqdm
 from lib.data import get_loader
 from lib.utils import mean, sample_map
+from lib.plotting import log_image
 from functools import partial
 
 import numpy as np
@@ -92,11 +93,12 @@ def full_forward(model, data, metrics):
         small_targets = sample_map(partial(downscale, level))(targets)
       deep_losses = calculate_loss(deep_outs, small_targets)
       deep_loss = mean(mean(s.values()) for s in deep_losses)
+      full_loss += deep_loss
       loss_terms[f'DeepLoss_{level}'] = deep_loss
-    
-    metrics.step(y_hat, targets, **loss_terms)
 
-    return dict(data=data, y_hat=y_hat, loss=loss)
+    loss_terms['Full Loss'] = full_loss
+    metrics.step(y_hat, targets, **loss_terms)
+    return dict(data=data, y_hat=y_hat, loss=full_loss)
 
 
 def train(loader):
@@ -105,7 +107,7 @@ def train(loader):
 
     epoch += 1
     model.train(True)
-    prog = tqdm(loader)
+    prog = tqdm(loader, desc=f'Trn {epoch:02d}')
     for i, (data, metadata) in enumerate(prog): 
         for param in model.parameters():
             param.grad = None
@@ -123,30 +125,36 @@ def train(loader):
 @torch.no_grad()
 def val(data_loader):
   # Validation step
-
   model.train(False)
   idx = 0
 
-
   current_image = None
   outputs = defaultdict(list)
-  def log_image(tile_id):
+  def log_image_wrapper(tile_id):
     if tile_id is None: return
+    if not (epoch == 1 or epoch % 5 == 0):
+      return
+    tensors, meta = zip(*outputs[tile_id])
+    log_image(tensors, meta, tile_id, step=epoch)
+    del outputs[tile_id]
 
-  for data, metadata in data_loader:
+  for data, metadata in tqdm(data_loader, desc=f'Val {epoch:02d}'):
     res = full_forward(model, data, metrics)
-    for i in range(len(data)):
-      tile_id = metadata[i]['source_file']
-      if tile_id != current_image:
-        log_image(current_image)
-      current_image = tile_id
-      tensors = {
-        **{f'Pred{k}': v for k, v in res['y_hat'][i].items()},
-        **data[i],
-      }
-      tensors = tree_map(lambda x: x.detach().cpu().numpy(), tensors)
-      outputs[tile_id].append({**tensors, **metadata[i]})
-  log_image(current_image)
+
+    if epoch == 1 or epoch % 5 == 0:
+      for i in range(len(data)):
+        tile_id = metadata[i]['source_file'].stem
+        if tile_id != current_image:
+          log_image_wrapper(current_image)
+        current_image = tile_id
+        tensors = {
+          **{f'Pred{k}': v for k, v in res['y_hat'][i].items()},
+          **data[i],
+        }
+        tensors = tree_map(lambda x: x.detach().cpu().numpy(), tensors)
+        outputs[tile_id].append((tensors, metadata[i]))
+
+  log_image_wrapper(current_image)
 
   metrics_vals = metrics.evaluate()
   wandb.log({f'val/{k}': v for k, v in metrics_vals.items()}, step=epoch)
