@@ -30,9 +30,8 @@ class NCDataset(Dataset):
       x0 = int(torch.randint(0, max(1, self.W - self.tilesize), ()))
     else:
       raise ValueError(f'Unsupported tiling mode: {self.sampling_mode!r}')
-    y1 = y0 + self.tilesize
-    x1 = x0 + self.tilesize
-
+    y1 = min(y0 + self.tilesize, self.H)
+    x1 = min(x0 + self.tilesize, self.W)
 
     tile = {}
     for k in self.data:
@@ -46,6 +45,7 @@ class NCDataset(Dataset):
       'source_file': self.netcdf_path,
       'y0': y0, 'x0': x0,
       'y1': y1, 'x1': x1,
+      'H': y1 - y0, 'W': x1 - x0,
       **pad_params,
     }
 
@@ -58,7 +58,7 @@ class NCDataset(Dataset):
     x_padding_needed = max(self.tilesize - W, 0)
 
     if y_padding_needed == 0 and x_padding_needed == 0:
-      return img, dict(py0=0, py1=1, px0=0, px1=1)
+      return img, dict(py0=0, py1=0, px0=0, px1=0)
 
     if self.sampling_mode == 'deterministic':
       y0 = y_padding_needed // 2
@@ -103,7 +103,7 @@ def get_loader(config, mode):
 
   if mode == 'test':
     root = root / 'cubes' / 'test'
-  elif mode in ['train', 'val', 'tinytrain']:
+  elif mode in ['train', 'val', 'tinytrain', 'tinyval']:
     root = root / 'cubes' / 'train'
   else:
     raise ValueError(f'Dataset mode {mode!r} not supported!')
@@ -114,6 +114,8 @@ def get_loader(config, mode):
     ncs = [nc for nc in ncs if not val_filter(nc)][::400]
   elif mode == 'val':
     ncs = [nc for nc in ncs if val_filter(nc)]
+  elif mode == 'tinyval':
+    ncs = [nc for nc in ncs if val_filter(nc)][::50]
 
   datasets = [NCDataset(nc, config['tile_size'], sampling_mode)
                 for nc in tqdm(ncs, desc=f'Opening {mode}')]
