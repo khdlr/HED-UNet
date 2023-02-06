@@ -94,7 +94,7 @@ class NCDataset(Dataset):
 
 
 def val_filter(filepath):
-  return md5(filepath.stem)[-1] in ['a', '3']
+  return md5(filepath.stem)[-1] == 'a'
 
 
 def get_loader(config, mode):
