@@ -33,20 +33,22 @@ class NCDataset(Dataset):
     y1 = y0 + self.tilesize
     x1 = x0 + self.tilesize
 
-    metadata = {
-      'source_file': self.netcdf_path,
-      'y0': y0, 'x0': x0,
-      'y1': y1, 'x1': x1,
-    }
 
     tile = {}
     for k in self.data:
       patch = self.data[k][..., y0:y1, x0:x1]
       patch = patch.fillna(0).values
-      patch = self.ensure_tilesize(patch)
+      patch, pad_params = self.ensure_tilesize(patch)
       patch = torch.from_numpy(patch)
       tile[k] = patch
     return tile, metadata
+
+    metadata = {
+      'source_file': self.netcdf_path,
+      'y0': y0, 'x0': x0,
+      'y1': y1, 'x1': x1,
+      **pad_params,
+    }
 
   def ensure_tilesize(self, img):
     *_, H, W = img.shape
@@ -55,7 +57,7 @@ class NCDataset(Dataset):
     x_padding_needed = max(self.tilesize - W, 0)
 
     if y_padding_needed == 0 and x_padding_needed == 0:
-      return img
+      return img, dict(py0=0, py1=1, px0=0, px1=1)
 
     if self.sampling_mode == 'deterministic':
       y0 = y_padding_needed // 2
@@ -72,10 +74,22 @@ class NCDataset(Dataset):
     while len(pad_seq) < img.ndim:
       pad_seq = [(0, 0)] + pad_seq
     padded = np.pad(img, pad_seq)
-    return padded
+    return padded, dict(py0=y0, py1=y1, px0=x0, px1=x1)
 
   def __len__(self):
     return self.H_tile * self.W_tile
+
+  def __del__(self):
+    try:
+      self.data = self.data.close()
+    except:
+      print('Caught something in 1')
+      pass
+    try:
+      del self.data
+    except:
+      print('Caught something in 2')
+      pass
 
 
 def val_filter(filepath):
@@ -124,7 +138,7 @@ if __name__ == '__main__':
 
   torch.random.manual_seed(0)
   config = yaml.safe_load(open('config.yml'))
-  config['data_threads'] = 0
+  config['data_threads'] = 4
 
   for mode in ['tinytrain', 'train', 'val', 'test']:
     loader = get_loader(config, mode)
