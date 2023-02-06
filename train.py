@@ -14,18 +14,18 @@ import sys, shutil, random, yaml
 from warnings import warn
 from datetime import datetime
 from pathlib import Path
+from collections import defaultdict
 from tqdm import tqdm
 from lib.data import get_loader
 from lib.utils import mean, sample_map
+from functools import partial
 
 import numpy as np
-import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils._pytree import tree_map
-from torch.utils.data import DataLoader
 import wandb
+from einops import rearrange
 
 try:
     from apex.optimizers import FusedAdam as Adam
@@ -38,6 +38,24 @@ from lib import get_loss, get_model, Metrics, flatui_cmap
 @sample_map
 def calculate_loss(prediction, target, kind):
   return loss_functions[kind](prediction, target)
+
+
+def downscale(level, target, kind):
+  target = rearrange(target, 'H W -> 1 1 H W')
+  if kind in ['Fronts', 'Kochtitzky', 'Termpicks']:
+    target = F.max_pool2d(target.float(), 1 << level)
+    return rearrange(target, '1 1 sH sW -> sH sW')
+  elif kind in ['Mask']:
+    target = F.avg_pool2d(target.float(), 1 << level)
+    return rearrange(target, '1 1 sH sW -> sH sW')
+  elif kind in ['Zones']:
+    target = F.one_hot(target.long(), num_classes=4).float()
+    target = rearrange(target, '1 1 H W C -> 1 C H W')
+    target = F.avg_pool2d(target, 1 << level)
+    target = rearrange(target, '1 C H W -> C H W')
+    return target
+  else:
+    raise ValueError(f'Unknown data kind {kind!r}')
 
 
 def full_forward(model, data, metrics):
@@ -62,12 +80,23 @@ def full_forward(model, data, metrics):
 
     y_hat, y_hat_levels = model(inputs, output_kinds)
     losses = calculate_loss(y_hat, targets)
-    warn('No Deep Supervision yet')
-    
     loss = mean(mean(sample_losses.values()) for sample_losses in losses)
-    metrics.step(y_hat, targets, Loss=loss)
 
-    return dict(data=data, loss=loss)
+    full_loss = loss
+    loss_terms = {'Loss': loss}
+    
+    for level, deep_outs in enumerate(reversed(y_hat_levels)):
+      if level == 0:
+        small_targets = targets
+      else:
+        small_targets = sample_map(partial(downscale, level))(targets)
+      deep_losses = calculate_loss(deep_outs, small_targets)
+      deep_loss = mean(mean(s.values()) for s in deep_losses)
+      loss_terms[f'DeepLoss_{level}'] = deep_loss
+    
+    metrics.step(y_hat, targets, **loss_terms)
+
+    return dict(data=data, y_hat=y_hat, loss=loss)
 
 
 def train(loader):
@@ -93,16 +122,34 @@ def train(loader):
 
 @torch.no_grad()
 def val(data_loader):
-    # Validation step
+  # Validation step
 
-    model.train(False)
-    idx = 0
-    for data, metadata in data_loader:
-        res = full_forward(model, data, metrics)
-        # TODO: Image logging
+  model.train(False)
+  idx = 0
 
-    metrics_vals = metrics.evaluate()
-    wandb.log({f'val/{k}': v for k, v in metrics_vals.items()}, step=epoch)
+
+  current_image = None
+  outputs = defaultdict(list)
+  def log_image(tile_id):
+    if tile_id is None: return
+
+  for data, metadata in data_loader:
+    res = full_forward(model, data, metrics)
+    for i in range(len(data)):
+      tile_id = metadata[i]['source_file']
+      if tile_id != current_image:
+        log_image(current_image)
+      current_image = tile_id
+      tensors = {
+        **{f'Pred{k}': v for k, v in res['y_hat'][i].items()},
+        **data[i],
+      }
+      tensors = tree_map(lambda x: x.detach().cpu().numpy(), tensors)
+      outputs[tile_id].append({**tensors, **metadata[i]})
+  log_image(current_image)
+
+  metrics_vals = metrics.evaluate()
+  wandb.log({f'val/{k}': v for k, v in metrics_vals.items()}, step=epoch)
 
 
 if __name__ == "__main__":

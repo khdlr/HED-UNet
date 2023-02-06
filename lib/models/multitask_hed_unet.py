@@ -94,29 +94,24 @@ class MultitaskHEDUNet(nn.Module):
         scale = Interpolator(output_size=(H, W))
         # outputs[batch_idx][kind] = ...
         # deep_outputs[batch_idx][kind][level] = ...
-        outputs = []
-        deep_outputs = []
-        for kinds, *features in zip(output_kinds, *multilevel_features):
-          output = {}
-          deep_output = {}
+        outputs = [{} for _ in range(B)]
+        deep_outputs = [[{} for _ in range(B)] for _ in multilevel_features]
+        samples = zip(output_kinds, *multilevel_features)
+        for j, (kinds, *features) in enumerate(samples):
           for kind in kinds:
-            deep_outs = []
             predictions = []
             queries = []
-            for feature_map, predictor, query in zip(features, self.predictors[kind], self.queries[kind]):
+            levels = zip(features, self.predictors[kind], self.queries[kind])
+            for i, (feature_map, predictor, query) in enumerate(levels):
               prediction = predictor(feature_map)
               q = query(feature_map)
-              deep_outs.append(prediction)
+              deep_outputs[i][j][kind] = prediction
               predictions.append(scale(prediction))
               queries.append(scale(q))
             predictions = torch.stack(predictions, dim=0) # Level x Channel x H x W
             attn = F.softmax(torch.cat(queries, dim=0), dim=0) # Level x H x W
             final_output = torch.einsum('rchw,rhw->chw', predictions, attn)
-
-            output[kind] = final_output
-            deep_output[kind] = deep_outs
-          outputs.append(output)
-          deep_outputs.append(deep_output)
+            outputs[j][kind] = final_output
 
         if self.deep_supervision:
             return outputs, deep_outputs

@@ -6,8 +6,7 @@ model_args:
     Sentinel2: 12
     Landsat8: 11
     Landsat7: 9
-    Landsat5: 7
-    Landsat4: 7
+    Landsat45: 7
   output_spec:
     Fronts:
       classes: 1

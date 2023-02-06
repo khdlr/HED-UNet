@@ -41,7 +41,6 @@ class NCDataset(Dataset):
       patch, pad_params = self.ensure_tilesize(patch)
       patch = torch.from_numpy(patch)
       tile[k] = patch
-    return tile, metadata
 
     metadata = {
       'source_file': self.netcdf_path,
@@ -49,6 +48,8 @@ class NCDataset(Dataset):
       'y1': y1, 'x1': x1,
       **pad_params,
     }
+
+    return tile, metadata
 
   def ensure_tilesize(self, img):
     *_, H, W = img.shape

@@ -33,7 +33,8 @@ def focal_loss_with_logits(y_hat_log, y, gamma=2):
 
 
 def cross_entropy(y_hat_log, y):
-  y = y.long()
+  if y.ndim < y_hat_log.ndim:
+    y = y.long()  # Target contains indices
   return F.cross_entropy(y_hat_log, y)
 
 
