@@ -78,7 +78,10 @@ class NCDataset(Dataset):
     return padded, dict(py0=y0, py1=y1, px0=x0, px1=x1)
 
   def __len__(self):
-    return self.H_tile * self.W_tile
+    if self.sampling_mode == 'random':
+      return 8
+    else:
+      return self.H_tile * self.W_tile
 
   def __del__(self):
     try:
