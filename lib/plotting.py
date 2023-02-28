@@ -1,4 +1,5 @@
 from matplotlib.colors import LinearSegmentedColormap
+import torch
 import numpy as np
 import wandb
 from einops import rearrange
@@ -44,7 +45,10 @@ def to_rgb(ary, kind):
   kind = kind.removeprefix('Pred')
   if kind in ['Kochtitzky', 'Termpicks', 'Fronts', 'Mask']:
     if is_pred:
-      ary = 1 / (1 + np.exp(-ary))
+      if kind == 'Mask':
+        ary = torch.softmax(torch.from_numpy(ary), dim=1)[1].numpy()
+      else:
+        ary = 1 / (1 + np.exp(-ary))
     if ary.shape[0] == 1:
       ary = ary[0]
     if ary.ndim == 2:
@@ -110,6 +114,12 @@ def log_image(patches, metadata, tag, step):
   row_2a = []
   row_1b = []
   row_2b = []
+  for k in list(imgs):
+    if k.startswith('Pred'):
+      stripped = k.removeprefix('Pred')
+      if stripped not in imgs:
+        imgs[stripped] = np.ones_like(imgs[k]) * 255
+
   for k in sorted(imgs):
     if k in ['Landsat45', 'Landsat7', 'Landsat8', 'Sentinel2', 'SAR']:
       row_1a.append(imgs[k])

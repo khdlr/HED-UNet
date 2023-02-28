@@ -47,8 +47,11 @@ def downscale(level, target, kind):
     target = F.max_pool2d(target.float(), 1 << level)
     return rearrange(target, '1 1 sH sW -> sH sW')
   elif kind in ['Mask']:
+    target = F.one_hot(target.long(), num_classes=2).float()
+    target = rearrange(target, '1 1 H W C -> 1 C H W')
     target = F.avg_pool2d(target.float(), 1 << level)
-    return rearrange(target, '1 1 sH sW -> sH sW')
+    target = rearrange(target, '1 C H W -> C H W')
+    return target
   elif kind in ['Zones']:
     target = F.one_hot(target.long(), num_classes=4).float()
     target = rearrange(target, '1 1 H W C -> 1 C H W')
@@ -62,42 +65,54 @@ def downscale(level, target, kind):
 def full_forward(model, data, metrics):
     data = tree_map(lambda x: x.to(dev), data)
 
-    inputs, targets, output_kinds = [], [], []
+    inputs, targets = [], []
     for sample in data:
       inp = {}
       outp = {}
-      outp_kinds = []
       for k, v in sample.items():
         if k in loss_functions:
           outp[k] = v
-          outp_kinds.append(k)
         elif k in model.init:
           inp[k] = v
         else:
           raise ValueError(f'Not sure what to do with data of kind {k!r}')
       inputs.append(inp)
       targets.append(outp)
-      output_kinds.append(outp_kinds)
 
-    y_hat, y_hat_levels = model(inputs, output_kinds)
-    losses = calculate_loss(y_hat, targets)
-    loss = mean(mean(sample_losses.values()) for sample_losses in losses)
+    y_hat, y_hat_levels = model(inputs)
 
-    full_loss = loss
-    loss_terms = {'Loss': loss}
-    
-    for level, deep_outs in enumerate(reversed(y_hat_levels)):
-      if level == 0:
-        small_targets = targets
-      else:
-        small_targets = sample_map(partial(downscale, level))(targets)
-      deep_losses = calculate_loss(deep_outs, small_targets)
-      deep_loss = mean(mean(s.values()) for s in deep_losses)
-      full_loss += deep_loss
+    losses = defaultdict(list)
+    deep_losses = [defaultdict(list) for _ in y_hat_levels]
+
+    for i, sample_targets in enumerate(targets):
+      for kind, target in sample_targets.items():
+        pred = y_hat[kind][i]
+        losses[kind].append(loss_functions[kind](pred, target))
+        metrics.update_terms(pred, target, kind)
+
+        # Deep Supervision Losses
+        for level, deep_outs in enumerate(reversed(y_hat_levels)):
+          if level == 0:
+            small_target = target
+          else:
+            small_target = downscale(level, target, kind)
+
+          small_pred = deep_outs[kind][i]
+          deep_loss = loss_functions[kind](small_pred, small_target)
+          deep_losses[level][kind].append(deep_loss)
+
+    loss_terms = {
+        k: mean(v) for k, v in losses.items()
+    }
+    full_loss = loss = mean(loss_terms.values())
+    loss_terms['Loss'] = loss
+
+    for level, dl in enumerate(reversed(deep_losses)):
+      deep_loss = mean(mean(s) for s in dl.values())
       loss_terms[f'DeepLoss_{level}'] = deep_loss
+      full_loss += deep_loss
 
-    loss_terms['Full Loss'] = full_loss
-    metrics.step(y_hat, targets, **loss_terms)
+    metrics.step(loss_terms)
     return dict(data=data, y_hat=y_hat, loss=full_loss)
 
 
@@ -148,7 +163,7 @@ def val(data_loader):
           log_image_wrapper(current_image)
         current_image = tile_id
         tensors = {
-          **{f'Pred{k}': v for k, v in res['y_hat'][i].items()},
+          **{f'Pred{k}': v[i] for k, v in res['y_hat'].items()},
           **data[i],
         }
         tensors = tree_map(lambda x: x.detach().cpu().numpy(), tensors)

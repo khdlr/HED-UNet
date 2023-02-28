@@ -26,21 +26,28 @@ class Metrics():
         self.running_agg = defaultdict(float)
         self.running_count = defaultdict(int)
         self.running_confusion_matrix = np.zeros([4, 4], dtype=np.int64)
+        self.running_confusion_matrix_mask = np.zeros([2, 2], dtype=np.int64)
 
     @torch.no_grad()
-    def step(self, y_pred, y_true, **additional_terms):
-      sample_map(self.update_terms)(y_pred, y_true)
-      for term in additional_terms:
-        self.running_agg[term] += additional_terms[term].cpu().numpy()
+    def step(self, terms):
+      for term in terms:
+        self.running_agg[term] += terms[term].cpu().numpy()
         self.running_count[term] += 1
 
     def update_terms(self, y_pred, y_true, kind):
       if kind in ['Termpicks', 'Kochtitzky', 'Mask', 'Fronts']:
         self._update(kind, compute_premetrics(y_pred, y_true))
+      elif kind == 'Mask':
+        y_pred = y_pred.argmax(dim=0)
+        confusion_idx = y_true.flatten() + 2 * y_pred.flatten()
+        confusion_matrix = torch.bincount(confusion_idx, minlength=(2*2))
+        confusion_matrix = confusion_matrix.cpu().numpy().reshape(2, 2)
+        self.running_confusion_matrix_mask += confusion_matrix
       elif kind == 'Zones':
         y_pred = y_pred.argmax(dim=0)
         confusion_idx = y_true.flatten() + 4 * y_pred.flatten()
-        confusion_matrix = torch.bincount(confusion_idx, minlength=(4*4)).cpu().numpy().reshape(4, 4)
+        confusion_matrix = torch.bincount(confusion_idx, minlength=(4*4))
+        confusion_matrix = confusion_matrix.cpu().numpy().reshape(4, 4)
         self.running_confusion_matrix += confusion_matrix
 
     def _update(self, kind, values):
@@ -66,6 +73,18 @@ class Metrics():
           values[f'{kind}/Recall'] = (TP) / (TP + FN),
           values[f'{kind}/Precision'] = (TP) / (TP + FP)
           values[f'{kind}/F1'] = (2 * TP) / (2 * TP + FP + FN)
+
+        ## Masks
+        CM = self.running_confusion_matrix
+        TP = np.diag(CM)  # diagonal: prediction == ground_truth
+        FP = CM.sum(axis=1) - TP  # FP = #PixelsActuallyInClass - TP
+        FN = CM.sum(axis=0) - TP  # FN = #PixelsPredictedAsClass - TP
+        TN = CM.sum() - TP - FP - FN  # FN = #Pixels - TP - FP - FN
+        IoU = TP / (FP + FN + TP)
+        values[f'Mask/mIoU'] = IoU.mean()
+        for name, value in zip(['Ocean', 'Land'], IoU):
+          values[f'Mask/IoU_{name}'] = value
+
         ## Multiclass
         CM = self.running_confusion_matrix
         TP = np.diag(CM)  # diagonal: prediction == ground_truth

@@ -18,10 +18,10 @@ class Interpolator:
   def __init__(self, output_size):
     self.output_size = output_size
 
-  def __call__(self, inputs):
-    x = inputs.unsqueeze(0)
+  def __call__(self, x):
     x = F.interpolate(x, size=self.output_size, mode='bilinear', align_corners=True)
-    return x.squeeze(0)
+    return x
+
 
 class MultitaskHEDUNet(nn.Module):
     """
@@ -41,17 +41,14 @@ class MultitaskHEDUNet(nn.Module):
         for kind, channels in input_spec.items():
           self.init[kind] = NoBatchConv(channels, bc, 1)
 
-        self.predictors = nn.ModuleDict()
-        self.queries = nn.ModuleDict()
-        for kind, spec in output_spec.items():
-          self.predictors[kind] = nn.ModuleList([
-            NoBatchConv((1<<i)*bc, spec['classes'], 1)
-            for i in reversed(range(stack_height + 1))
-          ])
-          self.queries[kind] = nn.ModuleList([
-            NoBatchConv((1<<i)*bc, 1, 1, bias=False)
-            for i in reversed(range(stack_height + 1))
-          ])
+        self.predictors = nn.ModuleList([
+          nn.Conv2d((1<<i)*bc, 5, 1)
+          for i in reversed(range(stack_height + 1))
+        ])
+        self.queries = nn.ModuleList([
+          nn.Conv2d((1<<i)*bc, 2, 1, bias=False)
+          for i in reversed(range(stack_height + 1))
+        ])
 
         conv_args = dict(
             conv_block=conv_block,
@@ -71,7 +68,21 @@ class MultitaskHEDUNet(nn.Module):
 
         self.deep_supervision = deep_supervision
 
-    def forward(self, inputs, output_kinds):
+    def extract_predictions(self, raw_pred):
+        out = {}
+        seg, edge = torch.split(raw_pred, [4, 1], dim=1)
+        out['Zones'] = seg
+        out['Fronts'] = edge
+        out['Kochtitzky'] = edge
+        out['Termpicks'] = edge
+
+        logprobs = torch.log_softmax(seg[:, 1:], dim=1)
+        rock, glacier, ocean = torch.split(logprobs, [1,1,1], dim=1)
+        foreground = torch.logaddexp(rock, glacier)
+        out['Mask'] =  torch.cat([ocean, foreground], dim=1)
+        return out
+
+    def forward(self, inputs):
         xs = []
         for element in inputs:
           assert len(element) == 1
@@ -92,26 +103,28 @@ class MultitaskHEDUNet(nn.Module):
             multilevel_features.append(x)
 
         scale = Interpolator(output_size=(H, W))
-        # outputs[batch_idx][kind] = ...
-        # deep_outputs[batch_idx][kind][level] = ...
-        outputs = [{} for _ in range(B)]
-        deep_outputs = [[{} for _ in range(B)] for _ in multilevel_features]
-        samples = zip(output_kinds, *multilevel_features)
-        for j, (kinds, *features) in enumerate(samples):
-          for kind in kinds:
-            predictions = []
-            queries = []
-            levels = zip(features, self.predictors[kind], self.queries[kind])
-            for i, (feature_map, predictor, query) in enumerate(levels):
-              prediction = predictor(feature_map)
-              q = query(feature_map)
-              deep_outputs[i][j][kind] = prediction
-              predictions.append(scale(prediction))
-              queries.append(scale(q))
-            predictions = torch.stack(predictions, dim=0) # Level x Channel x H x W
-            attn = F.softmax(torch.cat(queries, dim=0), dim=0) # Level x H x W
-            final_output = torch.einsum('rchw,rhw->chw', predictions, attn)
-            outputs[j][kind] = final_output
+        deep_outputs = []
+        predictions = []
+        queries = []
+        levels = zip(multilevel_features, self.predictors, self.queries)
+        for i, (feature_map, predictor, query) in enumerate(levels):
+          prediction = predictor(feature_map)
+          q = query(feature_map)
+          deep_outputs.append(self.extract_predictions(prediction))
+          predictions.append(scale(prediction))
+          queries.append(scale(q))
+
+        D = 0
+        predictions = torch.stack(predictions, dim=D)
+        attn = F.softmax(torch.stack(queries, dim=D), dim=D)
+        attn = torch.stack([
+          attn[:, :, 0], attn[:, :, 0],
+          attn[:, :, 0], attn[:, :, 0],
+          attn[:, :, 1]
+        ], dim=2)
+
+        raw_output = torch.einsum('rbchw,rbchw->bchw', predictions, attn)
+        outputs = self.extract_predictions(raw_output)
 
         if self.deep_supervision:
             return outputs, deep_outputs
