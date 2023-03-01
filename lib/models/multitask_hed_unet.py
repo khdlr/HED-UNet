@@ -42,11 +42,11 @@ class MultitaskHEDUNet(nn.Module):
           self.init[kind] = NoBatchConv(channels, bc, 1)
 
         self.predictors = nn.ModuleList([
-          nn.Conv2d((1<<i)*bc, 5, 1)
+          nn.Conv2d((1<<i)*bc, 4, 1)
           for i in reversed(range(stack_height + 1))
         ])
         self.queries = nn.ModuleList([
-          nn.Conv2d((1<<i)*bc, 2, 1, bias=False)
+          nn.Conv2d((1<<i)*bc, 1, 1, bias=False)
           for i in reversed(range(stack_height + 1))
         ])
 
@@ -68,16 +68,23 @@ class MultitaskHEDUNet(nn.Module):
 
         self.deep_supervision = deep_supervision
 
-    def extract_predictions(self, raw_pred):
+    def extract_predictions(self, seg):
         out = {}
-        seg, edge = torch.split(raw_pred, [4, 1], dim=1)
         out['Zones'] = seg
+
+        logprobs = torch.log_softmax(seg[:, 1:], dim=1)
+        logprobs_w1 = F.max_pool2d(logprobs, 3, padding=1)
+        logprobs_w2 = F.max_pool2d(logprobs_w1, 3, padding=1)
+
+        rock_w, glacier_w, ocean_w = torch.split(logprobs, [1,1,1], dim=1)
+        edge = torch.minimum(glacier_w, ocean_w)
+
         out['Fronts'] = edge
         out['Kochtitzky'] = edge
         out['Termpicks'] = edge
 
-        logprobs = torch.log_softmax(seg[:, 1:], dim=1)
         rock, glacier, ocean = torch.split(logprobs, [1,1,1], dim=1)
+
         foreground = torch.logaddexp(rock, glacier)
         out['Mask'] =  torch.cat([ocean, foreground], dim=1)
         return out
@@ -116,14 +123,9 @@ class MultitaskHEDUNet(nn.Module):
 
         D = 0
         predictions = torch.stack(predictions, dim=D)
-        attn = F.softmax(torch.stack(queries, dim=D), dim=D)
-        attn = torch.stack([
-          attn[:, :, 0], attn[:, :, 0],
-          attn[:, :, 0], attn[:, :, 0],
-          attn[:, :, 1]
-        ], dim=2)
+        attn = F.softmax(torch.stack(queries, dim=D), dim=D)[:, :, 0]
 
-        raw_output = torch.einsum('rbchw,rbchw->bchw', predictions, attn)
+        raw_output = torch.einsum('rbchw,rbhw->bchw', predictions, attn)
         outputs = self.extract_predictions(raw_output)
 
         if self.deep_supervision:

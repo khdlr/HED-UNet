@@ -7,7 +7,7 @@ class_names = ['NA', 'Rock', 'Glacier', 'Ocean']
 
 @torch.no_grad()
 def compute_premetrics(y_pred, y_true):
-  y_pred = y_pred > 0
+  y_pred = y_pred.exp() > 0.5
 
   return dict(
     TP = ((y_pred == 1) & (y_true == 1)).long().sum(),

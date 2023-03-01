@@ -10,16 +10,16 @@ model_args:
   output_spec:
     Fronts:
       classes: 1
-      loss: AutoBCE
+      loss: NoSigmoidAutoBCE
     Mask:
       classes: 1
       loss: CrossEntropy
     Termpicks:
       classes: 1
-      loss: AutoBCE
+      loss: NoSigmoidAutoBCE
     Kochtitzky:
       classes: 1
-      loss: AutoBCE
+      loss: NoSigmoidAutoBCE
     Zones:
       classes: 4
       loss: CrossEntropy
@@ -30,8 +30,8 @@ model_args:
 tile_size: 512
 data_root: '/home/user/_data/FromTian'
 feature_pyramid: true
-batch_size: 16
-epochs: 100
+batch_size: 8
+epochs: 300
 learning_rate: 1.e-3
 # Data Configuration
 data_threads: 4

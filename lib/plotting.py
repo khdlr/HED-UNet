@@ -46,9 +46,9 @@ def to_rgb(ary, kind):
   if kind in ['Kochtitzky', 'Termpicks', 'Fronts', 'Mask']:
     if is_pred:
       if kind == 'Mask':
-        ary = torch.softmax(torch.from_numpy(ary), dim=1)[1].numpy()
+        ary = torch.softmax(torch.from_numpy(ary), dim=0)[1].numpy()
       else:
-        ary = 1 / (1 + np.exp(-ary))
+        ary = np.exp(ary)
     if ary.shape[0] == 1:
       ary = ary[0]
     if ary.ndim == 2:
@@ -114,6 +114,16 @@ def log_image(patches, metadata, tag, step):
   row_2a = []
   row_1b = []
   row_2b = []
+  
+  for check in ['Kochtitzky', 'Termpicks', 'Fronts']:
+    if check in imgs:
+      imgs['Front'] = imgs[check]
+      del imgs[check]
+    check2 = f'Pred{check}'
+    if check2 in imgs:
+      imgs['PredFront'] = imgs[check2]
+      del imgs[check2]
+
   for k in list(imgs):
     if k.startswith('Pred'):
       stripped = k.removeprefix('Pred')
