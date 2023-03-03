@@ -1,4 +1,5 @@
 from matplotlib.colors import LinearSegmentedColormap
+import math
 import torch
 import numpy as np
 import wandb
@@ -145,10 +146,9 @@ def log_image(patches, metadata, tag, step):
     np.concatenate(row_2a + row_2b, axis=1),
   ], axis=0)
 
-  if 'SAR' in imgs:
-    img = downscale_local_mean(img, (6, 6, 1))
-  else:
-    img = downscale_local_mean(img, (2, 2, 1))
+  H, W, C = img.shape
+  factor = math.ceil(H / 512)
+  img = downscale_local_mean(img, (factor, factor, 1))
 
   wandb.log({tag: wandb.Image(img)}, step=step)
 
