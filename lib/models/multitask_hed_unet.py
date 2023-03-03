@@ -76,7 +76,7 @@ class MultitaskHEDUNet(nn.Module):
 
         widened = logprobs
         widened = F.max_pool2d(widened, [5, 5], stride=[1, 1], padding=[2, 2])
-        widened = F.avg_pool2d(widened, [3, 3], stride=[1, 1], padding=[1, 1])
+        widened = F.avg_pool2d(widened, [3, 3], stride=[1, 1], padding=[1, 1], count_include_pad=False)
 
         rock_w, glacier_w, ocean_w = torch.split(widened, [1,1,1], dim=1)
         edge = torch.minimum(glacier_w, ocean_w)
