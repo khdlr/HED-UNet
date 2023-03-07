@@ -85,7 +85,7 @@ def build_s2_scene(args):
     return
 
   bands = []
-  for i, band in enumerate(['B1', 'B2', 'B3', 'B4', 'B5', 'B5', 'B6', 'B7', 'B8A', 'B9', 'B11', 'B12'], 1):
+  for i, band in enumerate(['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8A', 'B9', 'B11', 'B12'], 1):
     data = rioxarray.open_rasterio(str(first_img).replace('B1', band))
     data.coords['band'] = [i]
     bands.append((data.astype(np.float32) / np.float32(10000)).astype(np.float32))
@@ -137,10 +137,10 @@ def build_ls_scene(args):
     return
 
   if platform_id == '8':
-    band_names = ['B1', 'B2', 'B3', 'B4', 'B5', 'B5', 'B6', 'B7', 'B8', 'B10', 'B11']
+    band_names = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B10', 'B11']
     scale = 10000
   elif platform_id == '7':
-    band_names = ['B1', 'B2', 'B3', 'B4', 'B5', 'B5', 'B6_VCID_2', 'B7', 'B8']
+    band_names = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6_VCID_2', 'B7', 'B8']
     scale = 255
   elif platform_id == '45':
     band_names = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7']

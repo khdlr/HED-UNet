@@ -3,9 +3,9 @@ model: MultitaskHEDUNet
 model_args:
   input_spec:
     SAR: 1
-    Sentinel2: 12
-    Landsat8: 11
-    Landsat7: 9
+    Sentinel2: 11
+    Landsat8: 10
+    Landsat7: 8
     Landsat45: 7
   output_spec:
     Fronts:
