@@ -116,7 +116,6 @@ def build_s2_scene(args):
   assert len(shapefiles) + 1 == len(out), f'Unused Shapefiles: {shapefiles}'
 
   dataset = xarray.Dataset(out)
-  mode = 'test' if is_test else 'train'
   save_h5(cache_dir, dataset, out_path)
 
 
@@ -196,7 +195,6 @@ def build_ls_scene(args):
   assert len(out) > 1, f'Image without Labels: {first_img}'
 
   dataset = xarray.Dataset(out)
-  mode = 'test' if is_test else 'train'
   save_h5(cache_dir, dataset, out_path)
 
 
