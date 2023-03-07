@@ -223,5 +223,6 @@ class Preprocessing:
 
 
 if __name__ == '__main__':
-  prep = Preprocessing('/home/user/_data/FromTian')
+  config = yaml.safe_load(open('config.yml'))
+  prep = Preprocessing(config['data_root'])
   prep.build_scenes()
