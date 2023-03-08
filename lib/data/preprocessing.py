@@ -14,6 +14,7 @@ from itertools import chain
 from multiprocessing import Pool
 
 def tqdm_pmap(fun, args):
+  # TODO: change back to 8
   with Pool(8) as pool:
     return list(tqdm(pool.imap_unordered(fun, args), total=len(args)))
 
@@ -67,8 +68,7 @@ def build_sar_scene(args):
   try:
     dataset = xarray.Dataset(out)
   except ValueError:
-    print('Weird stuff going on here...')
-    print(tree_map(lambda x: x.shape, out))
+    print(f'Weird stuff going on with {sar_path}:', tree_map(lambda x: x.shape, out))
     return
   save_h5(cache_dir, dataset, out_path)
 
@@ -198,28 +198,98 @@ def build_ls_scene(args):
   save_h5(cache_dir, dataset, out_path)
 
 
+def build_tud_scene(args):
+  first_img, test_ids, cache_dir = args
+
+  glacier_id = first_img.parent.parent.name
+  _, glacier_name = glacier_id.split('.')
+  is_test = glacier_id in test_ids
+  mode = 'test' if is_test else 'train'
+  tag = Path(first_img.parent).name
+  out_path = f'{mode}/LS8_TUD_{glacier_name}_{tag}.nc'
+
+  if check_exists(cache_dir, out_path):
+    return
+
+  band_names = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B10', 'B11']
+  scale = 255
+
+  bands = []
+  for i, band in enumerate(band_names, 1):
+    data = rioxarray.open_rasterio(str(first_img).replace('B1', band))
+    data.coords['band'] = [i]
+    bands.append((data / scale).astype(np.float32))
+
+  img = xarray.concat(bands, 'band')
+  out = {}
+  out[f'Landsat8_Normalized'] = img
+
+  profile = rio.open(first_img).profile
+  crs, transform = profile['crs'], profile['transform']
+
+  full_name = glacier_name
+  if glacier_name[-2] == '_':
+    # Drop _a, _b, etc.
+    full_name = glacier_name[:-2]
+  if glacier_name in ('zachariae_isstrom_north', 'zachariae_isstrom_south'):
+    full_name = 'zachariae_isstrom'
+
+  polygon_root = Path(str(first_img.parent).replace(glacier_id, full_name).replace('reference_data_geotif', 'polygons'))
+  polygon_path, = polygon_root.glob('*.shp')
+  try:
+    geom = gpd.read_file(polygon_path).to_crs(crs).geometry
+  except ValueError:
+    print(f"Couldn't reproject mask for {first_img}")
+    return
+  mask = rasterize(geom, out_shape=img.shape[1:], default_value=1, transform=transform)
+  xr = xarray.DataArray(mask, coords=[img.y, img.x])
+  xr = xr.rio.write_transform(transform).rio.write_crs(crs)
+  out['Mask'] = xr
+
+  lines_root = Path(str(first_img.parent).replace(glacier_id, full_name).replace('reference_data_geotif', 'lines'))
+  print(f'Searching in {polygon_root}')
+  lines_path, = lines_root.glob('*.shp')
+  try:
+    geom = gpd.read_file(lines_path).to_crs(crs).geometry
+  except ValueError:
+    print(f"Couldn't reproject coastline for {first_img}")
+    return
+  front = rasterize(geom, out_shape=img.shape[1:], default_value=1, transform=transform)
+  xr = xarray.DataArray(front, coords=[img.y, img.x])
+  xr = xr.rio.write_transform(transform).rio.write_crs(crs)
+  out['TUD_Fronts'] = xr
+
+  dataset = xarray.Dataset(out)
+  save_h5(cache_dir, dataset, out_path)
+
+
 class Preprocessing:
   def __init__(self, data_root):
     self.root = Path(data_root)
     self.cache = self.root / 'cubes'
 
   def build_scenes(self):
-    ## Load SAR images
+    print('Preprocessing SAR images')
     sar_images = chain(
         self.root.glob(f'SARImage/Gourmelon/sar_images/*/*.png'),
         self.root.glob(f'SARImage/CALFIN_Sentinel1/sar_images/*/*.png')
     )
     tqdm_pmap(build_sar_scene, [(img, self.cache) for img in sar_images])
 
-    ## Load S2 images
-    split = yaml.safe_load((self.root / 'split.yml').open())
-    test_ids = split['GrIS_Test'] + split['GIC_Test']
+    split = yaml.safe_load(open('split.yml'))
+    test_ids = split['GrIS_Test'] + split['GIC_Test'] + split['TUD_Test']
 
+    print('Preprocessing Sentinel 2 images')
     first_imgs = self.root.glob(f'OpticalImage/*/*_tif/*/Sentinel2/*/*B1.tif')
     tqdm_pmap(build_s2_scene, [(img, test_ids, self.cache) for img in first_imgs])
 
+    print('Preprocessing Landsat images')
     first_imgs = self.root.glob(f'OpticalImage/*/*_tif/*/Landsat/*/*B1.tif')
     tqdm_pmap(build_ls_scene, [(img, test_ids, self.cache) for img in first_imgs])
+
+    print('Preprocessing TUD images')
+    first_imgs = self.root.glob(f'TUD/reference_data_geotif/*/*/L8_B1.tif')
+    tqdm_pmap(build_tud_scene, [(img, test_ids, self.cache) for img in first_imgs])
 
 
 if __name__ == '__main__':

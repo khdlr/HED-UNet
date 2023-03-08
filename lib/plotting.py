@@ -44,7 +44,7 @@ def flatui_cmap(*colors):
 def to_rgb(ary, kind):
   is_pred = kind.startswith('Pred')
   kind = kind.removeprefix('Pred')
-  if kind in ['Kochtitzky', 'Termpicks', 'Fronts', 'Mask']:
+  if kind in ['Kochtitzky', 'Termpicks', 'Fronts', 'TUD_Fronts', 'Mask']:
     if is_pred:
       if kind == 'Mask':
         ary = torch.softmax(torch.from_numpy(ary), dim=0)[1].numpy()
@@ -74,7 +74,7 @@ def to_rgb(ary, kind):
     ])
     out = colors[ary]
     return out
-  elif kind in ['Landsat45', 'Landsat7', 'Landsat8', 'Sentinel2']:
+  elif kind.startswith('Landsat') or kind == 'Sentinel2':
     rgb = rearrange(ary[[3,2,1]], 'C H W -> H W C')
     rgb = (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
     return rgb
@@ -116,7 +116,7 @@ def log_image(patches, metadata, tag, step):
   row_1b = []
   row_2b = []
   
-  for check in ['Kochtitzky', 'Termpicks', 'Fronts']:
+  for check in ['Kochtitzky', 'Termpicks', 'Fronts', 'TUD_Fronts']:
     if check in imgs:
       imgs['Front'] = imgs[check]
       del imgs[check]

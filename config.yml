@@ -5,6 +5,7 @@ model_args:
     SAR: 1
     Sentinel2: 11
     Landsat8: 10
+    Landsat8_Normalized: 10
     Landsat7: 8
     Landsat45: 7
   output_spec:
@@ -20,6 +21,9 @@ model_args:
     Kochtitzky:
       classes: 1
       loss: NoSigmoidAutoBCE
+    TUD_Fronts:
+      classes: 1
+      loss: NoSigmoidAutoBCE
     Zones:
       classes: 4
       loss: CrossEntropy
@@ -28,7 +32,7 @@ model_args:
   batch_norm: true
 # Training Parameters
 tile_size: 512
-data_root: '/home/user/_data/FromTian'
+data_root: '/data/Konrad_Tian_SharedFolder/TrainingData/'
 feature_pyramid: true
 batch_size: 8
 epochs: 300

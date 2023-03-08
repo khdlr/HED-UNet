@@ -43,7 +43,7 @@ def calculate_loss(prediction, target, kind):
 
 def downscale(level, target, kind):
   target = rearrange(target, 'H W -> 1 1 H W')
-  if kind in ['Fronts', 'Kochtitzky', 'Termpicks']:
+  if kind in ['Fronts', 'Kochtitzky', 'Termpicks', 'TUD_Fronts']:
     target = F.max_pool2d(target.float(), 1 << level)
     return rearrange(target, '1 1 sH sW -> sH sW')
   elif kind in ['Mask']:

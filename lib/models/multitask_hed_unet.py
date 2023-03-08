@@ -82,6 +82,7 @@ class MultitaskHEDUNet(nn.Module):
         edge = torch.minimum(glacier_w, ocean_w)
 
         out['Fronts'] = edge
+        out['TUD_Fronts'] = edge
         out['Kochtitzky'] = edge
         out['Termpicks'] = edge
 
