@@ -132,7 +132,8 @@ def log_image(patches, metadata, tag, step):
         imgs[stripped] = np.ones_like(imgs[k]) * 255
 
   for k in sorted(imgs):
-    if k in ['Landsat45', 'Landsat7', 'Landsat8', 'Sentinel2', 'SAR']:
+    if k in ['Landsat45', 'Landsat7', 'Landsat8', 'Landsat8_Normalized',
+             'Sentinel2', 'SAR']:
       row_1a.append(imgs[k])
       row_2a.append(np.ones_like(imgs[k]) * 255)
     else:
