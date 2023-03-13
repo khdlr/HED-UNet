@@ -29,7 +29,7 @@ model_args:
       loss: CrossEntropy
   base_channels: 16
   stack_height: 5
-  batch_norm: true
+  batch_norm: false
 # Training Parameters
 tile_size: 512
 data_root: '/data/Konrad_Tian_SharedFolder/TrainingData/'
@@ -38,5 +38,5 @@ batch_size: 8
 epochs: 300
 learning_rate: 1.e-3
 # Data Configuration
-data_threads: 4
+data_threads: 12
 # Visualization
