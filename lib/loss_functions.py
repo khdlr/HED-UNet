@@ -48,7 +48,7 @@ def no_sigmoid_auto_weight_bce(y_hat_log, y):
   with torch.no_grad():
       beta = y.mean(dim=[2, 3], keepdims=True)
   logit_1 = y_hat_log
-  logit_0 = torch.log(1 - torch.exp(y_hat_log))
+  logit_0 = _invert_logprob(y_hat_log)
   loss = -(1 - beta) * logit_1 * y \
          - beta * logit_0 * (1 - y)
   return loss.mean()
@@ -66,4 +66,15 @@ def auto_weight_bce(y_hat_log, y):
   loss = -(1 - beta) * logit_1 * y \
          - beta * logit_0 * (1 - y)
   return loss.mean()
+
+
+def _invert_logprob(x):
+  """
+  Numerically stable implementation of log(1 - exp(x)),
+  idea from https://cran.r-project.org/web/packages/Rmpfr/vignettes/log1mexp-note.pdf
+  """
+  return torch.where(x < -0.6931472, # x < -log(2)
+    torch.log1p(-torch.exp(x)),
+    torch.log(-torch.expm1(x))
+  )
 
