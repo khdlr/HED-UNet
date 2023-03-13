@@ -35,7 +35,7 @@ class Metrics():
         self.running_count[term] += 1
 
     def update_terms(self, y_pred, y_true, kind):
-      if kind in ['Termpicks', 'Kochtitzky', 'Mask', 'Fronts']:
+      if kind in ['Termpicks', 'Kochtitzky', 'Fronts', 'TUD_Fronts']:
         self._update(kind, compute_premetrics(y_pred, y_true))
       elif kind == 'Mask':
         y_pred = y_pred.argmax(dim=0)
