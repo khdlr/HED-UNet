@@ -14,7 +14,6 @@ from itertools import chain
 from multiprocessing import Pool
 
 def tqdm_pmap(fun, args):
-  # TODO: change back to 8
   with Pool(8) as pool:
     return list(tqdm(pool.imap_unordered(fun, args), total=len(args)))
 
@@ -242,12 +241,12 @@ def build_tud_scene(args):
     print(f"Couldn't reproject mask for {first_img}")
     return
   mask = rasterize(geom, out_shape=img.shape[1:], default_value=1, transform=transform)
+  mask = 1 - mask
   xr = xarray.DataArray(mask, coords=[img.y, img.x])
   xr = xr.rio.write_transform(transform).rio.write_crs(crs)
   out['Mask'] = xr
 
   lines_root = Path(str(first_img.parent).replace(glacier_id, full_name).replace('reference_data_geotif', 'lines'))
-  print(f'Searching in {polygon_root}')
   lines_path, = lines_root.glob('*.shp')
   try:
     geom = gpd.read_file(lines_path).to_crs(crs).geometry
