@@ -48,7 +48,7 @@ def no_sigmoid_auto_weight_bce(y_hat_log, y):
   with torch.no_grad():
       beta = y.mean(dim=[2, 3], keepdims=True)
       
-  logit_1 = torch.clip(y_hat_log, max=1e-3)
+  logit_1 = torch.clip(y_hat_log, max=-1e-3)
   logit_0 = _invert_logprob(logit_1)
   loss = -(1 - beta) * logit_1 * y \
          - beta * logit_0 * (1 - y)
