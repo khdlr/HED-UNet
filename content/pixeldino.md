@@ -13,7 +13,7 @@ In order to do this efficiently with deep learning,
 large amounts of annotated data are needed,
 of which currently we do not have enough.
 
-{{< figure src="map_2.png" caption=" ">}}
+{{< figure src="map.png" caption=" ">}}
 
 In order to address this without needing to manually digitize
 vast areas across the Arctic,
