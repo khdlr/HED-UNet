@@ -1,4 +1,4 @@
-module github.com/khdlr/COBRA/project_page
+module github.com/khdlr/PixelDINO/project_page
 
 go 1.13
 
