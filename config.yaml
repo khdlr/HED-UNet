@@ -125,14 +125,14 @@ Menu:
     #   url: "/#idea"
     #   # weight controls the order of the menu items.
     #   weight: 1
-    - name: Method
-      identifier: pixeldino
-      url: "/#pixeldino"
-      weight: 2
-    - name: Results
-      identifier: results
-      url: "/#results"
-      weight: 3
+    # - name: Method
+    #   identifier: pixeldino
+    #   url: "/#pixeldino"
+    #   weight: 2
+    # - name: Results
+    #   identifier: results
+    #   url: "/#results"
+    #   weight: 3
     - name: Paper
       identifier: paper
       url: "/#paper"
