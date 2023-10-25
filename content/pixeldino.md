@@ -20,7 +20,7 @@ vast areas across the Arctic,
 we propose a semi-supervised learning approach which is able to combine
 existing labelled data with additional unlabelled data.
 
-{{< figure src="pixeldino.svg" caption=" ">}}
+{{< figure src="pixeldino.png" caption=" ">}}
 
 This is done by asking the model to derive pseudo-classes,
 according to which it will segment the unlabelled images.
