@@ -46,11 +46,6 @@ Params:
 
   mdTagline: |
     # PixelDINO: Semi-Supervised Semantic Segmentation for Detecting Permafrost Disturbances
-  #   <div class="visual_row">
-  #     <img src="./anim/11.svg"></img>
-  #     <img src="./anim/18.svg"></img>
-  #     <img src="./anim/25.svg"></img>
-  #   </div>
 
   # enforceSinglePage will enforce redirection to the baseURL for all sub-directories/-pages.
   #   Example: If you create about.md, Hugo will also create a '/about/index.html' which might not be what you want for a *single* page site. 
@@ -125,14 +120,14 @@ Menu:
     #   url: "/#idea"
     #   # weight controls the order of the menu items.
     #   weight: 1
-    # - name: Method
-    #   identifier: pixeldino
-    #   url: "/#pixeldino"
-    #   weight: 2
-    # - name: Results
-    #   identifier: results
-    #   url: "/#results"
-    #   weight: 3
+    - name: Method
+      identifier: pixeldino
+      url: "/#pixeldino"
+      weight: 2
+    - name: Results
+      identifier: results
+      url: "/#results"
+      weight: 3
     - name: Paper
       identifier: paper
       url: "/#paper"

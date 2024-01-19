@@ -9,7 +9,7 @@ Retrogressive Thaw Slumps are a permafrost disturbance
 comparable to landslides induced by permafrost thaw.
 Their detection and monitoring is important for understanding
 the dynamics of permafrost thaw and the vulnerability of permafrost across the Arctic.
-In order to do this efficiently with deep learning,
+To do this efficiently with deep learning,
 large amounts of annotated data are needed,
 of which currently we do not have enough.
 
