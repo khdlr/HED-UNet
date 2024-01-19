@@ -1,7 +1,7 @@
-title: "PixelDINO"
-baseURL: "https://khdlr.github.io/PixelDINO/"
+title: "HED-UNet"
+baseURL: "https://khdlr.github.io/HED-UNet/"
 languageCode: "en-GB"
-theme: "github.com/khdlr/osprey-delight/v5"
+theme: ['hugo-video', "github.com/khdlr/osprey-delight/v5"]
 tags: ["personal", "homepage", "portfolio"]
 canonifyURLS: true
 #googleAnalytics: ""
@@ -20,7 +20,7 @@ module:
 ## Generic theme parameters:
 Params:
   author: "Konrad Heidler"
-  description: "PixelDINO: Semi-Supervised Semantic Segmentation for Detecting Permafrost Disturbances"
+  description: "HED-UNet: Combined Segmentation and Edge Detection for Monitoring the Antarctic Coastline"
 
   # logoBig appears at the top of the page. Use a path relative to the assets dir for auto-resizing. 
   logoBig: "1x1.png"
@@ -45,7 +45,7 @@ Params:
   theme: "delight"
 
   mdTagline: |
-    # PixelDINO: Semi-Supervised Semantic Segmentation for Detecting Permafrost Disturbances
+    # HED-UNet: Combined Segmentation and Edge Detection for Monitoring the Antarctic Coastline
 
   # enforceSinglePage will enforce redirection to the baseURL for all sub-directories/-pages.
   #   Example: If you create about.md, Hugo will also create a '/about/index.html' which might not be what you want for a *single* page site. 
@@ -113,13 +113,13 @@ Params:
 ##   See: https://gohugo.io/content-management/menus/#add-content-to-menus
 Menu:
   Main:
-    # - name: "Idea"
-    #   # identifier controls the section type (and therewith the appearence).
-    #   identifier: idea
-    #   # url must be an anchor, for smooth scrolling to it when clicking on the menu item.
-    #   url: "/#idea"
-    #   # weight controls the order of the menu items.
-    #   weight: 1
+    - name: "Idea"
+      # identifier controls the section type (and therewith the appearence).
+      identifier: idea
+      # url must be an anchor, for smooth scrolling to it when clicking on the menu item.
+      url: "/#idea"
+      # weight controls the order of the menu items.
+      weight: 1
     - name: Method
       identifier: pixeldino
       url: "/#pixeldino"

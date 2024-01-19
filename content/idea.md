@@ -1,5 +1,0 @@
-+++
-title = "Idea"
-draft = false
-+++
-

@@ -1,30 +1,13 @@
 +++
-title = "PixelDINO"
+title = "HED-UNet"
 draft = false
 +++
 
-{{< figure src="rts.jpg" caption=" " >}}
+{{< figure src="highlevel.png" caption=" " >}}
 
-Retrogressive Thaw Slumps are a permafrost disturbance
-comparable to landslides induced by permafrost thaw.
-Their detection and monitoring is important for understanding
-the dynamics of permafrost thaw and the vulnerability of permafrost across the Arctic.
-To do this efficiently with deep learning,
-large amounts of annotated data are needed,
-of which currently we do not have enough.
+HED-UNet combines the commonly used semantic segmentation model UNet with the edge detection model HED to reflect the need to focus on the edges.
 
-{{< figure src="map.png" caption=" ">}}
+{{< figure src="hed-unet.png" caption=" " >}}
 
-In order to address this without needing to manually digitize
-vast areas across the Arctic,
-we propose a semi-supervised learning approach which is able to combine
-existing labelled data with additional unlabelled data.
-
-{{< figure src="pixeldino.png" caption=" ">}}
-
-This is done by asking the model to derive pseudo-classes,
-according to which it will segment the unlabelled images.
-For these pseudo-classes,
-consistency across data augmentations is enforced,
-which provides valuable training feedback to the model even for unlabelled tiles.
-
+For allowing the model to use a larger spatial context and "use a bigger brush", the number of up- and downsampling layers was increased from 4 to 6.
+Finally, to retain fine-grained details near the edges but use broader contextual information farther away from the edges, the predictions at different resolution levels are merged through an attention merging head.

@@ -3,6 +3,4 @@ title = "Paper"
 draft = false
 +++
 
-Currently under review.
-
-Pre-print available at https://arxiv.org/abs/2401.09271
+The full paper is available [on IEEE Explore](https://ieeexplore.ieee.org/document/9383809)
